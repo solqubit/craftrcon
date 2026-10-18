@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 # CraftRCON installer: shared shell library. Sourced (never executed) by the
 # install/update/uninstall flows. It sets no shell options: the flows run with
-# `set -Eeuo pipefail` and this file is written to be safe under it.
+# `set -Eeuo pipefail` and this file is written to be safe under it (test_common.sh
+# exercises the conditional-use cases under exactly those options).
+#
+# Conventions:
+#   - function locals are prefixed with `_` so they never shadow a caller's variable
+#     (ask/read_secret assign to a caller-named variable with printf -v);
+#   - no `cmd | grep -q` / `| head -n 1` pipelines (SIGPIPE + pipefail = false failures).
 #
 # Environment knobs (mostly for tests):
 #   CRAFTRCON_LANG      en|es message language (default en); see also set_lang
@@ -31,33 +37,36 @@ INSTALLED_FILE="${INSTALLED_FILE:-$OPT_DIR/installed.json}"
 
 # set_lang LANG: loads messages.<LANG>.sh (en or es); anything else falls back to en.
 set_lang() {
-  local lang="${1:-en}"
-  case "$lang" in
+  local _lang="${1:-en}"
+  case "$_lang" in
     en | es) ;;
-    *) lang=en ;;
+    *) _lang=en ;;
   esac
-  CRAFTRCON_LANG="$lang"
+  CRAFTRCON_LANG="$_lang"
   # shellcheck source=messages.en.sh
   . "$LIB_DIR/messages.en.sh"
-  if [ "$lang" != en ]; then
+  if [ "$_lang" != en ]; then
     # shellcheck source=messages.es.sh
-    . "$LIB_DIR/messages.$lang.sh"
+    . "$LIB_DIR/messages.$_lang.sh"
   fi
 }
 
 # msg KEY [args...]: prints MSG_<KEY> through printf (no trailing newline).
-# An unknown key prints the key itself; it never fails.
+# Callers pass exactly the arguments the format needs (printf would repeat the format
+# for surplus ones). An unknown or malformed key is printed literally; it never fails.
 msg() {
-  local key="$1" var fmt
+  local _key="$1" _var _fmt=''
   shift
-  var="MSG_$key"
-  fmt="${!var:-}"
-  if [ -z "$fmt" ]; then
-    printf '%s' "$key"
+  if [[ "$_key" =~ ^[A-Za-z0-9_]+$ ]]; then
+    _var="MSG_$_key"
+    _fmt="${!_var:-}"
+  fi
+  if [ -z "$_fmt" ]; then
+    printf '%s' "$_key"
     return 0
   fi
   # shellcheck disable=SC2059 # the catalog entry is the format string
-  printf "$fmt" "$@"
+  printf -- "$_fmt" "$@"
 }
 
 # ------------------------------------------------------------------ output --
@@ -86,9 +95,9 @@ die() {
 
 # step N TOTAL KEY [args...]
 step() {
-  local n="$1" total="$2"
+  local _n="$1" _total="$2"
   shift 2
-  printf '%s[%s/%s]%s %s\n' "$C_BOLD" "$n" "$total" "$C_RESET" "$(msg "$@")"
+  printf '%s[%s/%s]%s %s\n' "$C_BOLD" "$_n" "$_total" "$C_RESET" "$(msg "$@")"
 }
 
 # ------------------------------------------------------------------ system --
@@ -100,50 +109,50 @@ require_root() {
 
 # detect_arch: prints x64 or arm64.
 detect_arch() {
-  local m="${CRAFTRCON_UNAME_M:-$(uname -m)}"
-  case "$m" in
+  local _m="${CRAFTRCON_UNAME_M:-$(uname -m)}"
+  case "$_m" in
     x86_64 | amd64) echo x64 ;;
     aarch64 | arm64) echo arm64 ;;
-    *) die ERR_ARCH "$m" ;;
+    *) die ERR_ARCH "$_m" ;;
   esac
 }
 
 # _os_field FILE KEY: value of KEY=... in an os-release file, without quotes.
 _os_field() {
-  sed -n "s/^$2=//p" "$1" | head -n 1 | tr -d "\"'"
+  sed -n "/^$2=/{s///;p;q;}" "$1" | tr -d "\"'"
 }
 
 # detect_os: exports OS_ID OS_VERSION OS_LIKE PKG INIT LIBC.
 detect_os() {
-  local file="${OS_RELEASE_FILE:-/etc/os-release}" id like ver major tok
-  [ -r "$file" ] || die ERR_OS_FILE "$file"
-  id="$(_os_field "$file" ID)"
-  like="$(_os_field "$file" ID_LIKE)"
-  ver="$(_os_field "$file" VERSION_ID)"
-  major="${ver%%.*}"
-  OS_ID="$id"
-  OS_VERSION="$ver"
-  OS_LIKE="$like"
+  local _file="${OS_RELEASE_FILE:-/etc/os-release}" _id _like _ver _major _tok _f _ldd_out
+  [ -r "$_file" ] || die ERR_OS_FILE "$_file"
+  _id="$(_os_field "$_file" ID)"
+  _like="$(_os_field "$_file" ID_LIKE)"
+  _ver="$(_os_field "$_file" VERSION_ID)"
+  _major="${_ver%%.*}"
+  OS_ID="$_id"
+  OS_VERSION="$_ver"
+  OS_LIKE="$_like"
 
   PKG=''
-  for tok in $id $like; do
-    case "$tok" in
+  for _tok in $_id $_like; do
+    case "$_tok" in
       debian | ubuntu | raspbian | linuxmint | pop) PKG=apt ;;
       fedora) PKG=dnf ;;
       rhel | centos | rocky | almalinux | ol)
         # EL 8+ ships dnf; EL 7 only has yum.
-        if [ "${major:-0}" -ge 8 ] 2>/dev/null; then PKG=dnf; else PKG=yum; fi
+        if [ "${_major:-0}" -ge 8 ] 2>/dev/null; then PKG=dnf; else PKG=yum; fi
         ;;
       amzn)
-        if [ "$major" = 2 ]; then PKG=yum; else PKG=dnf; fi
+        if [ "$_major" = 2 ]; then PKG=yum; else PKG=dnf; fi
         ;;
       suse | opensuse | opensuse-leap | opensuse-tumbleweed | sles) PKG=zypper ;;
       arch | manjaro) PKG=pacman ;;
       alpine) PKG=apk ;;
     esac
-    [ -z "$PKG" ] || break
+    if [ -n "$PKG" ]; then break; fi
   done
-  [ -n "$PKG" ] || die ERR_OS_UNSUPPORTED "${id:-unknown}"
+  [ -n "$PKG" ] || die ERR_OS_UNSUPPORTED "${_id:-unknown}"
 
   if [ -n "${INIT_OVERRIDE:-}" ]; then
     INIT="$INIT_OVERRIDE"
@@ -158,18 +167,23 @@ detect_os() {
   if [ -n "${LIBC_OVERRIDE:-}" ]; then
     LIBC="$LIBC_OVERRIDE"
   else
-    LIBC=glibc
-    local f ldd_out
-    ldd_out="$(ldd --version 2>&1 || true)" # musl prints its banner on stderr and exits 1
-    case "$ldd_out" in
+    LIBC=''
+    # musl's ldd prints its banner on stderr and exits 1; glibc's names GNU libc/GLIBC.
+    _ldd_out="$(ldd --version 2>&1 || true)"
+    case "$_ldd_out" in
       *[Mm][Uu][Ss][Ll]*) LIBC=musl ;;
+      *[Gg][Nn][Uu]*[Ll][Ii][Bb][Cc]* | *[Gg][Ll][Ii][Bb][Cc]*) LIBC=glibc ;;
     esac
-    for f in /lib/ld-musl-*; do
-      if [ -e "$f" ]; then
-        LIBC=musl
-        break
-      fi
-    done
+    if [ -z "$LIBC" ]; then
+      # ldd gave no verdict (missing or unrecognised): look for the musl loader.
+      LIBC=glibc
+      for _f in /lib/ld-musl-*; do
+        if [ -e "$_f" ]; then
+          LIBC=musl
+          break
+        fi
+      done
+    fi
   fi
   export OS_ID OS_VERSION OS_LIKE PKG INIT LIBC
 }
@@ -187,7 +201,7 @@ pkg_install() {
     dnf) dnf install -y "$@" ;;
     yum) yum install -y "$@" ;;
     zypper) zypper --non-interactive install "$@" ;;
-    pacman) pacman -Sy --noconfirm --needed "$@" ;;
+    pacman) pacman -Syu --needed --noconfirm "$@" ;; # -Sy alone would risk a partial upgrade
     apk) apk add --no-cache "$@" ;;
     *) die ERR_NO_PKG_MANAGER ;;
   esac
@@ -198,21 +212,21 @@ pkg_install() {
 # version_cmp A B: prints -1, 0 or 1 comparing two X.Y.Z versions.
 # Returns 2 (and prints nothing on stdout) when either one is not X.Y.Z.
 version_cmp() {
-  local v a b i
-  for v in "$1" "$2"; do
-    if ! [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-      msg ERR_VERSION_INVALID "$v" >&2
+  local _v _a _b _i
+  for _v in "$1" "$2"; do
+    if ! [[ "$_v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      msg ERR_VERSION_INVALID "$_v" >&2
       echo >&2
       return 2
     fi
   done
-  IFS=. read -ra a <<<"$1"
-  IFS=. read -ra b <<<"$2"
-  for i in 0 1 2; do
-    if ((10#${a[i]} > 10#${b[i]})); then
+  IFS=. read -ra _a <<<"$1"
+  IFS=. read -ra _b <<<"$2"
+  for _i in 0 1 2; do
+    if ((10#${_a[_i]} > 10#${_b[_i]})); then
       echo 1
       return 0
-    elif ((10#${a[i]} < 10#${b[i]})); then
+    elif ((10#${_a[_i]} < 10#${_b[_i]})); then
       echo -1
       return 0
     fi
@@ -223,10 +237,46 @@ version_cmp() {
 # is_installed: true when installed.json exists.
 is_installed() { [ -f "$INSTALLED_FILE" ]; }
 
-# installed_version: prints the "version" recorded in installed.json (nothing if absent).
+# installed_version: prints the top-level "version" of installed.json. Prints nothing
+# (and still returns 0, so `v="$(installed_version)"` is safe under set -e) when the
+# file is absent or has no such key; nested "version" keys are ignored.
 installed_version() {
-  is_installed || return 1
-  sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$INSTALLED_FILE" | head -n 1
+  is_installed || return 0
+  awk '
+    BEGIN { RS = "\001" }
+    {
+      s = $0; n = length(s); depth = 0; i = 1
+      while (i <= n) {
+        c = substr(s, i, 1)
+        if (c == "{" || c == "[") depth++
+        else if (c == "}" || c == "]") depth--
+        else if (c == "\"") {
+          # read a JSON string token
+          j = i + 1; tok = ""
+          while (j <= n) {
+            d = substr(s, j, 1)
+            if (d == "\\") { tok = tok substr(s, j, 2); j += 2; continue }
+            if (d == "\"") break
+            tok = tok d; j++
+          }
+          k = j + 1
+          while (substr(s, k, 1) ~ /[ \t\r\n]/) k++
+          if (depth == 1 && tok == "version" && substr(s, k, 1) == ":") {
+            k++
+            while (substr(s, k, 1) ~ /[ \t\r\n]/) k++
+            if (substr(s, k, 1) == "\"") {
+              k++; v = ""
+              while (k <= n && substr(s, k, 1) != "\"") { v = v substr(s, k, 1); k++ }
+              print v
+              exit
+            }
+          }
+          i = j
+        }
+        i++
+      }
+    }
+  ' "$INSTALLED_FILE"
 }
 
 # ------------------------------------------------------------------- input --
@@ -236,59 +286,72 @@ _check_varname() {
 }
 
 # ask PROMPT_KEY DEFAULT VAR: asks a question; empty answer / EOF / NONINTERACTIVE=1 -> DEFAULT.
+# A last line without trailing newline is still accepted.
 ask() {
-  local key="$1" default="$2" var="$3" answer=''
-  _check_varname "$var"
+  local _key="$1" _default="$2" _var="$3" _answer=''
+  _check_varname "$_var"
   if [ "${NONINTERACTIVE:-0}" != 1 ]; then
-    printf '%s [%s]: ' "$(msg "$key")" "$default" >&2
-    IFS= read -r answer || answer=''
+    printf '%s [%s]: ' "$(msg "$_key")" "$_default" >&2
+    IFS= read -r _answer || true # at EOF read still stores a partial last line
   fi
-  printf -v "$var" '%s' "${answer:-$default}"
+  printf -v "$_var" '%s' "${_answer:-$_default}"
 }
 
-# read_secret PROMPT_KEY VAR: reads a secret without echo; with NONINTERACTIVE=1 takes CRAFTRCON_PASSWORD.
+# read_secret PROMPT_KEY VAR: reads a secret without echo; with NONINTERACTIVE=1 takes
+# CRAFTRCON_PASSWORD (and unsets it so child processes do not inherit it).
 read_secret() {
-  local key="$1" var="$2" secret=''
-  _check_varname "$var"
+  local _key="$1" _var="$2" _secret=''
+  _check_varname "$_var"
   if [ "${NONINTERACTIVE:-0}" = 1 ]; then
-    secret="${CRAFTRCON_PASSWORD:-}"
-    [ -n "$secret" ] || die ERR_PASSWORD_MISSING
+    _secret="${CRAFTRCON_PASSWORD:-}"
+    unset CRAFTRCON_PASSWORD
+    [ -n "$_secret" ] || die ERR_PASSWORD_MISSING
   else
-    printf '%s: ' "$(msg "$key")" >&2
-    IFS= read -rs secret || secret=''
+    printf '%s: ' "$(msg "$_key")" >&2
+    IFS= read -rs _secret || true
     echo >&2
   fi
-  printf -v "$var" '%s' "$secret"
+  printf -v "$_var" '%s' "$_secret"
 }
 
 # ----------------------------------------------------------------- network --
 
 # port_in_use PORT: true if something is listening on the TCP port (ss, else /proc/net/tcp*).
 port_in_use() {
-  local port="$1" hex
+  local _port="$1" _hex _f _files=()
   if [ -z "${CRAFTRCON_NO_SS:-}" ] && command -v ss >/dev/null 2>&1; then
-    ss -ltn 2>/dev/null | awk -v p="$port" '$4 ~ ("[:.]" p "$") { found = 1 } END { exit !found }'
+    ss -ltn 2>/dev/null | awk -v p="$_port" '$4 ~ ("[:.]" p "$") { found = 1 } END { exit !found }'
     return
   fi
-  hex="$(printf '%04X' "$port")"
+  # Only pass readable files: mawk/busybox awk abort on a missing one before END runs
+  # (e.g. no /proc/net/tcp6 when IPv6 is disabled) and would lose a listener found earlier.
   # shellcheck disable=SC2086 # the variable holds a whitespace-separated file list
-  awk -v p="$hex" '
+  for _f in ${PROC_NET_TCP_FILES:-/proc/net/tcp /proc/net/tcp6}; do
+    if [ -r "$_f" ]; then _files+=("$_f"); fi
+  done
+  [ "${#_files[@]}" -gt 0 ] || return 1
+  _hex="$(printf '%04X' "$_port")"
+  awk -v p="$_hex" '
     $4 == "0A" { n = split($2, a, ":"); if (a[n] == p) found = 1 }
     END { exit !found }
-  ' ${PROC_NET_TCP_FILES:-/proc/net/tcp /proc/net/tcp6} 2>/dev/null
+  ' "${_files[@]}"
 }
 
-# wait_health URL TIMEOUT_S: polls URL with curl until the body has "ok":true; returns 1 on timeout.
+# wait_health URL TIMEOUT_S: polls URL with curl until the body has "ok":true; returns 1 on
+# timeout. Always polls at least once, even with a timeout of 0.
 wait_health() {
-  local url="$1" timeout="$2" start="$SECONDS" body
-  while ((SECONDS - start < timeout)); do
-    body="$(curl -fsS -m 2 "$url" 2>/dev/null || true)"
-    if grep -Eq '"ok"[[:space:]]*:[[:space:]]*true' <<<"$body"; then
+  local _url="$1" _timeout="$2" _start="$SECONDS" _body
+  command -v curl >/dev/null 2>&1 || die ERR_NO_CURL
+  while :; do
+    _body="$(curl -fsS -m 2 "$_url" 2>/dev/null || true)"
+    if grep -Eq '"ok"[[:space:]]*:[[:space:]]*true' <<<"$_body"; then
       return 0
+    fi
+    if ((SECONDS - _start >= _timeout)); then
+      return 1
     fi
     sleep "${HEALTH_INTERVAL:-1}"
   done
-  return 1
 }
 
 # ------------------------------------------------------------------- setup --

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Unit tests for scripts/lib/common.sh and the message catalogs.
+# shellcheck disable=SC2016 # the strict() snippets are deliberately single-quoted (they expand in the child bash)
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
@@ -17,6 +18,9 @@ trap 'rm -rf "$TMP"' EXIT
 # Runs a snippet in a fresh bash that has common.sh loaded (extra env via `env`).
 # shellcheck disable=SC2329 # invoked indirectly through assert_fail
 in_common() { bash -c ". '$COMMON'; $1"; }
+# Runs a snippet the way the flows run: strict mode on, library sourced, snippet in a
+# fresh bash. Prints the snippet's output; its exit status is the snippet's.
+strict() { env "${@:2}" bash -c "set -Eeuo pipefail; . '$COMMON'; $1"; }
 
 echo "version_cmp"
 assert_eq "0" "$(version_cmp 1.4.2 1.4.2)" "equal versions"
@@ -34,6 +38,7 @@ assert_eq "2" "$?" "empty -> rc 2"
 version_cmp 1.0.0-beta 1.0.0 >/dev/null 2>&1
 assert_eq "2" "$?" "prerelease not supported -> rc 2"
 assert_contains "abc" "$(version_cmp 1.0.0 abc 2>&1 >/dev/null)" "invalid version message names the value"
+assert_eq "" "$(version_cmp 1.0.0 abc 2>/dev/null)" "invalid version prints nothing on stdout"
 
 echo "detect_os"
 pkg_for() { # pkg_for FIXTURE -> prints "PKG|OS_ID|OS_VERSION|OS_LIKE"
@@ -85,6 +90,12 @@ assert_eq "$es_text" "$es_env" "CRAFTRCON_LANG=es is honoured"
 fallback="$( (set_lang xx; msg ERR_ARCH foo) )"
 assert_eq "$en_text" "$fallback" "unknown language falls back to en"
 # shellcheck disable=SC2034 # read indirectly by msg
+assert_eq "x y" "$(msg 'x y')" "malformed key (space) printed literally"
+assert_eq 'a;b$(id)' "$(msg 'a;b$(id)')" "malformed key (shell metachars) printed literally"
+assert_eq "" "$(msg '')" "empty key prints nothing"
+# shellcheck disable=SC2034 # read indirectly by msg
+assert_eq "-5 left" "$( (MSG_TEST_DASH='-%s left'; msg TEST_DASH 5) )" "format starting with a dash is safe"
+# shellcheck disable=SC2034 # read indirectly by msg
 assert_eq "100% sure" "$( (MSG_TEST_PCT='%s%% sure'; msg TEST_PCT 100) )" "printf escapes work"
 
 echo "message catalogs"
@@ -135,12 +146,25 @@ assert_ok "installed when file exists" env INSTALLED_FILE="$FIX/installed.json" 
 assert_eq "1.4.2" "$(INSTALLED_FILE="$FIX/installed.json" installed_version)" "version from pretty JSON"
 assert_eq "0.10.3" "$(INSTALLED_FILE="$FIX/installed.compact.json" installed_version)" "version from compact JSON"
 assert_eq "" "$(INSTALLED_FILE="$TMP/none.json" installed_version)" "no version when not installed"
+assert_eq "2.0.1" "$(INSTALLED_FILE="$FIX/installed.nested.json" installed_version)" "top-level version wins over nested/quoted ones"
+assert_eq "" "$(INSTALLED_FILE="$FIX/installed.noversion.json" installed_version)" "nested-only version is ignored"
+INSTALLED_FILE="$TMP/none.json" installed_version >/dev/null
+assert_eq "0" "$?" "installed_version returns 0 when not installed"
 
 echo "ask / read_secret"
 assert_eq "dflt" "$( (NONINTERACTIVE=1 ask ERR_ARCH dflt V </dev/null; echo "$V") )" "ask uses default when NONINTERACTIVE=1"
 assert_eq "typed" "$( (ask ERR_ARCH dflt V <<<"typed" 2>/dev/null; echo "$V") )" "ask reads the answer"
 assert_eq "dflt" "$( (ask ERR_ARCH dflt V <<<"" 2>/dev/null; echo "$V") )" "ask empty answer -> default"
 assert_eq "dflt" "$( (ask ERR_ARCH dflt V </dev/null 2>/dev/null; echo "$V") )" "ask EOF -> default"
+assert_eq "last" "$( (ask ERR_ARCH dflt V 2>/dev/null < <(printf 'last'); echo "$V") )" "ask keeps a final line without newline"
+assert_eq "pw-nonl" "$( (read_secret ERR_ARCH P 2>/dev/null < <(printf 'pw-nonl'); echo "$P") )" "read_secret keeps a final line without newline"
+for name in key var answer secret default; do
+  assert_eq "v-$name" "$( (ask ERR_ARCH d "$name" 2>/dev/null < <(printf 'v-%s
+' "$name"); echo "${!name}") )" "ask can fill a variable called $name"
+  assert_eq "s-$name" "$( (read_secret ERR_ARCH "$name" 2>/dev/null < <(printf 's-%s
+' "$name"); echo "${!name}") )" "read_secret can fill a variable called $name"
+done
+assert_eq "unset" "$( (NONINTERACTIVE=1 CRAFTRCON_PASSWORD=x read_secret ERR_ARCH P; echo "${CRAFTRCON_PASSWORD-unset}") )" "read_secret unsets CRAFTRCON_PASSWORD"
 assert_eq "s3cret-pass" "$( (NONINTERACTIVE=1 CRAFTRCON_PASSWORD=s3cret-pass read_secret ERR_ARCH P </dev/null; echo "$P") )" "read_secret from CRAFTRCON_PASSWORD"
 assert_fail "read_secret NONINTERACTIVE without password dies" env NONINTERACTIVE=1 bash -c ". '$COMMON'; read_secret ERR_ARCH P </dev/null"
 assert_eq "piped-pass" "$( (read_secret ERR_ARCH P <<<"piped-pass" 2>/dev/null; echo "$P") )" "read_secret reads stdin when not a TTY"
@@ -152,6 +176,12 @@ assert_ok "listening port found via /proc/net/tcp" port_in_use 8080
 assert_fail "established-only port is not in use" port_in_use 9090
 assert_fail "unknown port is free" port_in_use 8081
 assert_fail "port match is not a prefix match" port_in_use 80
+# A missing second file (no /proc/net/tcp6) must not hide a listener from the first.
+PROC_NET_TCP_FILES="$FIX/proc-net-tcp $TMP/nonexistent-tcp6"
+assert_ok "listener found even when the second file is missing" port_in_use 8080
+assert_fail "free port with a missing file" port_in_use 8081
+PROC_NET_TCP_FILES="$TMP/nonexistent-a $TMP/nonexistent-b"
+assert_fail "no readable proc files -> not in use" port_in_use 8080
 unset CRAFTRCON_NO_SS PROC_NET_TCP_FILES
 mkdir -p "$TMP/bin-ss"
 cat >"$TMP/bin-ss/ss" <<SH
@@ -185,6 +215,17 @@ echo '{"ok":false}'
 SH
 assert_fail "wait_health times out when never healthy" env HEALTH_INTERVAL=0.2 PATH="$TMP/bin-curl:$PATH" bash -c ". '$COMMON'; wait_health http://127.0.0.1:1/api/health 1"
 
+echo "wait_health edge cases"
+mkdir -p "$TMP/bin-ok"
+printf '#!/bin/sh
+echo %s
+' "'{\"ok\":true}'" >"$TMP/bin-ok/curl"
+chmod +x "$TMP/bin-ok/curl"
+assert_ok "timeout 0 still polls once" env PATH="$TMP/bin-ok:$PATH" bash -c ". '$COMMON'; wait_health http://x 0"
+no_curl_rc="$(bash -c ". '$COMMON'; PATH='$TMP/empty'; wait_health http://x 1" >/dev/null 2>"$TMP/nocurl.err"; echo $?)"
+assert_eq "1" "$no_curl_rc" "wait_health without curl exits 1"
+assert_contains "curl" "$(cat "$TMP/nocurl.err")" "wait_health without curl explains why"
+
 echo "pkg_install"
 mkdir -p "$TMP/bin-pkg"
 for tool in apt-get dnf yum zypper pacman apk; do
@@ -203,9 +244,28 @@ assert_eq "apt-get update -qq;apt-get install -y --no-install-recommends curl ta
 assert_eq "dnf install -y curl;" "$(pkg_log dnf curl)" "dnf"
 assert_eq "yum install -y curl;" "$(pkg_log yum curl)" "yum"
 assert_eq "zypper --non-interactive install curl;" "$(pkg_log zypper curl)" "zypper"
-assert_eq "pacman -Sy --noconfirm --needed curl;" "$(pkg_log pacman curl)" "pacman"
+assert_eq "pacman -Syu --needed --noconfirm curl;" "$(pkg_log pacman curl)" "pacman"
 assert_eq "apk add --no-cache curl;" "$(pkg_log apk curl)" "apk"
 assert_fail "pkg_install without PKG dies" env -u PKG bash -c ". '$COMMON'; pkg_install curl"
+
+echo "strict mode (set -Eeuo pipefail, as the flows run)"
+assert_eq "free" "$(strict 'if port_in_use 8081; then echo used; else echo free; fi' CRAFTRCON_NO_SS=1 PROC_NET_TCP_FILES="$FIX/proc-net-tcp $TMP/none")" "port_in_use free inside if"
+assert_eq "used" "$(strict 'if port_in_use 8080; then echo used; else echo free; fi' CRAFTRCON_NO_SS=1 PROC_NET_TCP_FILES="$FIX/proc-net-tcp $TMP/none")" "port_in_use used inside if (missing 2nd file)"
+assert_eq "used" "$(strict 'port_in_use 8080 && echo used || echo free' PATH="$TMP/bin-ss:$PATH")" "port_in_use via ss under strict mode"
+assert_eq "rc2" "$(strict 'rc=0; version_cmp 1.0 1.0.0 >/dev/null 2>&1 || rc=$?; echo rc$rc')" "version_cmp rc 2 is catchable"
+assert_eq "-1" "$(strict 'v="$(version_cmp 1.0.0 1.0.1)"; echo "$v"')" "version_cmp captured under strict mode"
+assert_eq "[]" "$(strict 'v="$(installed_version)"; echo "[$v]"' INSTALLED_FILE="$TMP/none.json")" "installed_version absent does not kill a strict caller"
+assert_eq "[1.4.2]" "$(strict 'v="$(installed_version)"; echo "[$v]"' INSTALLED_FILE="$FIX/installed.json")" "installed_version present under strict mode"
+assert_eq "[dflt]" "$(strict 'ask ERR_ARCH dflt V </dev/null 2>/dev/null; echo "[$V]"')" "ask at EOF under strict mode"
+assert_eq "[typed]" "$(strict 'ask ERR_ARCH dflt V 2>/dev/null < <(printf "typed"); echo "[$V]"')" "ask partial line under strict mode"
+assert_eq "[piped]" "$(strict 'read_secret ERR_ARCH P 2>/dev/null < <(printf "piped
+"); echo "[$P]"')" "read_secret from a pipe under strict mode"
+assert_eq "[pw]" "$(strict 'read_secret ERR_ARCH P; echo "[$P]"' NONINTERACTIVE=1 CRAFTRCON_PASSWORD=pw)" "read_secret non-interactive under strict mode"
+assert_eq "none" "$(strict 'detect_os; echo "$INIT"' OS_RELEASE_FILE="$FIX/os-release.debian12" INIT_OVERRIDE=none)" "detect_os under strict mode"
+assert_eq "x64" "$(strict 'a="$(detect_arch)"; echo "$a"' CRAFTRCON_UNAME_M=x86_64)" "detect_arch under strict mode"
+assert_eq "ok" "$(strict 'wait_health http://x 1 && echo ok' PATH="$TMP/bin-ok:$PATH")" "wait_health under strict mode"
+assert_eq "to" "$(strict 'wait_health http://x 0 || echo to' PATH="$TMP/bin-curl:$PATH")" "wait_health timeout catchable under strict mode"
+assert_contains "Unsupported" "$(strict 'msg ERR_ARCH x; msg NOPE >/dev/null; echo " done"')" "msg under strict mode"
 
 echo "bootstrap scripts"
 for b in install update; do
