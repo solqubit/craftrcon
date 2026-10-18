@@ -310,5 +310,9 @@ test('encoded variants of public routes stay public and unknown URLs expose noth
   assert.equal((await app.inject({ method: 'GET', url: '/%61pi/health' })).statusCode, 200);
   const missing = await app.inject({ method: 'GET', url: '/%61pi/nope' });
   assert.equal(missing.statusCode, 404);
-  assert.equal((await app.inject({ method: 'GET', url: '/nope' })).statusCode, 404);
+  assert.deepEqual(missing.json(), { error: 'not_found' });
+  // Outside /api/ an unknown path is a SPA deep link: it gets the static shell only.
+  const page = await app.inject({ method: 'GET', url: '/nope' });
+  assert.equal(page.statusCode, 200);
+  assert.match(page.body, /<div id="app"><\/div>/);
 });

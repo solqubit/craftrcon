@@ -1,0 +1,61 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "delete": "Delete",
+    "close": "Close",
+    "dismiss": "Dismiss",
+    "loading": "Loading…"
+  },
+  "nav": {
+    "label": "Sections",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu",
+    "dashboard": "Dashboard",
+    "console": "Console",
+    "players": "Players",
+    "moderation": "Moderation",
+    "world": "World",
+    "tasks": "Tasks",
+    "servers": "Servers",
+    "settings": "Settings"
+  },
+  "layout": {
+    "skip": "Skip to content",
+    "server": "Server",
+    "noServers": "No servers yet",
+    "language": "Language",
+    "logout": "Log out",
+    "status": {
+      "checking": "Checking…",
+      "online": "Online",
+      "offline": "Offline",
+      "unknown": "Unknown"
+    }
+  },
+  "login": {
+    "title": "Sign in",
+    "subtitle": "Enter the admin password to manage your Minecraft servers.",
+    "password": "Admin password",
+    "show": "Show password",
+    "hide": "Hide password",
+    "submit": "Sign in",
+    "submitting": "Signing in…",
+    "empty": "Enter your password.",
+    "invalid": "Wrong password. Please try again.",
+    "tooMany": "Too many attempts. Try again in {seconds} s.",
+    "failed": "Couldn't sign in. Please try again.",
+    "hint": "Forgot it? Run {command} on the panel's server."
+  },
+  "placeholder": {
+    "title": "Coming soon",
+    "message": "This section is still being built."
+  },
+  "errors": {
+    "network": "Can't reach the panel. Check your connection and try again.",
+    "sessionEnded": "Your session has ended. Please sign in again.",
+    "logoutFailed": "Couldn't log out. Please try again.",
+    "serversLoad": "Couldn't load your servers."
+  }
+}

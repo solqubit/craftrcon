@@ -1,0 +1,61 @@
+{
+  "common": {
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "confirm": "Confirmar",
+    "delete": "Eliminar",
+    "close": "Cerrar",
+    "dismiss": "Descartar",
+    "loading": "Cargando…"
+  },
+  "nav": {
+    "label": "Secciones",
+    "openMenu": "Abrir menú",
+    "closeMenu": "Cerrar menú",
+    "dashboard": "Panel",
+    "console": "Consola",
+    "players": "Jugadores",
+    "moderation": "Moderación",
+    "world": "Mundo",
+    "tasks": "Tareas",
+    "servers": "Servidores",
+    "settings": "Configuración"
+  },
+  "layout": {
+    "skip": "Saltar al contenido",
+    "server": "Servidor",
+    "noServers": "Aún no hay servidores",
+    "language": "Idioma",
+    "logout": "Cerrar sesión",
+    "status": {
+      "checking": "Comprobando…",
+      "online": "En línea",
+      "offline": "Fuera de línea",
+      "unknown": "Desconocido"
+    }
+  },
+  "login": {
+    "title": "Iniciar sesión",
+    "subtitle": "Ingresa la contraseña de administrador para gestionar tus servidores de Minecraft.",
+    "password": "Contraseña de administrador",
+    "show": "Mostrar contraseña",
+    "hide": "Ocultar contraseña",
+    "submit": "Iniciar sesión",
+    "submitting": "Iniciando sesión…",
+    "empty": "Ingresa tu contraseña.",
+    "invalid": "Contraseña incorrecta. Inténtalo de nuevo.",
+    "tooMany": "Demasiados intentos. Vuelve a intentarlo en {seconds} s.",
+    "failed": "No se pudo iniciar sesión. Inténtalo de nuevo.",
+    "hint": "¿La olvidaste? Ejecuta {command} en el servidor del panel."
+  },
+  "placeholder": {
+    "title": "Próximamente",
+    "message": "Esta sección todavía está en construcción."
+  },
+  "errors": {
+    "network": "No se puede conectar con el panel. Revisa tu conexión e inténtalo de nuevo.",
+    "sessionEnded": "Tu sesión terminó. Vuelve a iniciar sesión.",
+    "logoutFailed": "No se pudo cerrar la sesión. Inténtalo de nuevo.",
+    "serversLoad": "No se pudieron cargar tus servidores."
+  }
+}
