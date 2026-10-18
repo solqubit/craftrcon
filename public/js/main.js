@@ -7,12 +7,13 @@ import { setServers, store, useStore } from './store.js';
 import { Empty } from './components/Empty.js';
 import { Layout } from './components/Layout.js';
 import { Toasts, toast } from './components/Toast.js';
+import { Console } from './pages/Console.js';
 import { Login } from './pages/Login.js';
 import { Servers } from './pages/Servers.js';
 
 // Section pages by route name. Later tasks register theirs here; until then a
 // section shows a placeholder.
-const PAGES = { servers: Servers };
+const PAGES = { console: Console, servers: Servers };
 
 function Placeholder({ route }) {
   return html`<div class="page">

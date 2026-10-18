@@ -40,6 +40,13 @@ const PATHS = {
   arrowRight: () => html`<path d="M5 12h14" /><path d="m12 5 7 7-7 7" />`,
   check: () => html`<path d="M20 6 9 17l-5-5" />`,
   inbox: () => html`<path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />`,
+  search: () => html`<circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />`,
+  download: () => html`<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" /><path d="M12 15V3" />`,
+  eraser: () => html`<path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21" /><path d="M22 21H7" /><path d="m5 11 9 9" />`,
+  star: () => html`<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />`,
+  history: () => html`<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l4 2" />`,
+  enter: () => html`<path d="M20 4v7a4 4 0 0 1-4 4H4" /><path d="m9 10-5 5 5 5" />`,
+  arrowDown: () => html`<path d="M12 5v14" /><path d="m19 12-7 7-7-7" />`,
 };
 
 export function Icon({ name, size = 18, class: className = '' }) {
