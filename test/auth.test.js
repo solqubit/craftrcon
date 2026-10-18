@@ -88,15 +88,17 @@ test('5 wrong passwords lock the IP, even for the correct password', async (t) =
 test('rate limiter doubles the lock each time up to the cap and resets on success', () => {
   let t = 0;
   const rl = createRateLimiter({ maxFails: 2, baseLockMs: 1000, maxLockMs: 3000, now: () => t });
+  const attempt = () => {
+    assert.equal(rl.check('a').allowed, true);
+    rl.fail('a');
+  };
   const lockFor = () => {
-    rl.fail('a');
-    rl.fail('a');
+    attempt();
+    attempt();
     return rl.check('a').retryAfterMs;
   };
-  assert.equal(rl.check('a').allowed, true);
   assert.equal(lockFor(), 1000);
   t += 1000;
-  assert.equal(rl.check('a').allowed, true);
   assert.equal(lockFor(), 2000);
   t += 2000;
   assert.equal(lockFor(), 3000);
@@ -104,10 +106,41 @@ test('rate limiter doubles the lock each time up to the cap and resets on succes
   assert.equal(lockFor(), 3000);
   assert.equal(rl.check('b').allowed, true, 'other IPs are unaffected');
   t += 3000;
-  rl.fail('a');
+  attempt();
+  assert.equal(rl.check('a').allowed, true);
   rl.success('a');
-  rl.fail('a');
+  attempt();
   assert.equal(rl.check('a').allowed, true, 'success clears the failure streak');
+});
+
+test('rate limiter counts in-flight attempts against the limit', () => {
+  const rl = createRateLimiter({ maxFails: 3, baseLockMs: 1000, now: () => 0 });
+  const results = Array.from({ length: 10 }, () => rl.check('a').allowed);
+  assert.equal(results.filter(Boolean).length, 3);
+  for (let i = 0; i < 3; i += 1) rl.fail('a');
+  assert.equal(rl.check('a').retryAfterMs, 1000, 'one burst causes one lock, not an escalation');
+  const rl2 = createRateLimiter({ maxFails: 2, now: () => 0 });
+  assert.equal(rl2.check('a').allowed, true);
+  assert.equal(rl2.check('a').allowed, true);
+  assert.equal(rl2.check('a').allowed, false);
+  rl2.release('a');
+  assert.equal(rl2.check('a').allowed, true, 'release frees the slot without counting a failure');
+});
+
+test('concurrent wrong logins cannot exceed the 5-attempt limit', async (t) => {
+  const { app } = await makeApp();
+  t.after(() => app.close());
+  const results = await Promise.all(
+    Array.from({ length: 20 }, () => post(app, '/api/login', { password: 'wrong' })),
+  );
+  const codes = results.map((r) => r.statusCode);
+  assert.equal(codes.filter((c) => c === 401).length, 5);
+  assert.equal(codes.filter((c) => c === 429).length, 15);
+  const retry = results.find((r) => r.statusCode === 429).json().retryAfterMs;
+  assert.ok(retry <= 60_000, 'a single burst must not escalate the lock');
+  const after = await post(app, '/api/login', GOOD);
+  assert.equal(after.statusCode, 429);
+  assert.ok(after.json().retryAfterMs <= 60_000);
 });
 
 test('POST with a foreign Origin is rejected', async (t) => {
@@ -246,4 +279,36 @@ test('the global hook also protects routes registered in plugin scopes', async (
   const headers = await login();
   assert.equal((await app.inject({ method: 'GET', url: '/api/secret', headers })).statusCode, 200);
   assert.equal((await post(app, '/api/secret', {}, headers)).statusCode, 200);
+});
+
+test('percent-encoded paths cannot bypass the session check', async (t) => {
+  const { app } = await makeApp();
+  t.after(() => app.close());
+  for (const url of ['/%61pi/me', '/ap%69/me', '/api/%6De', '/api/me?x=1']) {
+    const res = await app.inject({ method: 'GET', url });
+    assert.equal(res.statusCode, 401, url);
+  }
+});
+
+test('percent-encoded paths cannot bypass the Origin check', async (t) => {
+  const { app, login } = await makeApp();
+  t.after(() => app.close());
+  const { cookie } = await login();
+  for (const url of ['/%61pi/logout', '/ap%69/logout', '/api/logou%74']) {
+    const noOrigin = await post(app, url, undefined, { host: TEST_HOST });
+    assert.equal(noOrigin.statusCode, 403, url);
+    const evil = await post(app, url, undefined, { host: TEST_HOST, origin: 'http://evil.test', cookie });
+    assert.equal(evil.statusCode, 403, url);
+  }
+  const alive = await app.inject({ method: 'GET', url: '/api/me', headers: { cookie } });
+  assert.equal(alive.statusCode, 200);
+});
+
+test('encoded variants of public routes stay public and unknown URLs expose nothing', async (t) => {
+  const { app } = await makeApp();
+  t.after(() => app.close());
+  assert.equal((await app.inject({ method: 'GET', url: '/%61pi/health' })).statusCode, 200);
+  const missing = await app.inject({ method: 'GET', url: '/%61pi/nope' });
+  assert.equal(missing.statusCode, 404);
+  assert.equal((await app.inject({ method: 'GET', url: '/nope' })).statusCode, 404);
 });

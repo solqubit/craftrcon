@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
-import { registerAuth } from './routes/auth.js';
+import { registerAuth, PUBLIC } from './routes/auth.js';
 
 // Builds the Fastify instance without listening. Later tasks register their
 // hooks and routes here. `db` may be null and `services` may be {} in tests
@@ -14,7 +14,7 @@ export function buildApp({ config, db, services }) {
   app.register(cookie);
   registerAuth(app);
 
-  app.get('/api/health', async () => ({ ok: true, version: config.version }));
+  app.get('/api/health', { config: PUBLIC }, async () => ({ ok: true, version: config.version }));
 
   return app;
 }

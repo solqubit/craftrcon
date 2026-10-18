@@ -4,7 +4,8 @@ import { createRateLimiter } from '../security/rateLimit.js';
 export const SESSION_COOKIE = 'craftrcon_sid';
 const COOKIE_MAX_AGE_S = 7 * 24 * 3600;
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
-const PUBLIC_PATHS = new Set(['/api/health', '/api/login']);
+// Routes opt out of the session check with `config: PUBLIC`.
+export const PUBLIC = Object.freeze({ public: true });
 
 function firstValue(header) {
   if (typeof header !== 'string') return undefined;
@@ -42,22 +43,25 @@ export function registerAuth(app) {
 
   const sidOf = (request) => app.parseCookie(request.headers.cookie ?? '')[SESSION_COOKIE];
 
+  // Decides on the matched route pattern, never on the raw URL: the router
+  // percent-decodes paths, so "/%61pi/me" reaches the "/api/me" handler.
+  // Everything under /api/ is private unless the route sets `config: PUBLIC`.
+  // Unmatched URLs (404) have no route pattern and expose nothing.
   app.addHook('onRequest', async (request, reply) => {
-    const path = request.url.split('?')[0];
-    if (!path.startsWith('/api/')) return;
-    if (path === '/api/health') return;
+    const pattern = request.routeOptions.url;
+    if (typeof pattern !== 'string' || !pattern.startsWith('/api/')) return;
 
     if (!SAFE_METHODS.has(request.method) && !originAllowed(request, config)) {
       return reply.code(403).send({ error: 'bad_origin' });
     }
-    if (PUBLIC_PATHS.has(path)) return;
+    if (request.routeOptions.config?.public === true) return;
 
     if (!app.services.sessions.validate(sidOf(request))) {
       return reply.code(401).send({ error: 'unauthorized' });
     }
   });
 
-  app.post('/api/login', async (request, reply) => {
+  app.post('/api/login', { config: PUBLIC }, async (request, reply) => {
     const { sessions, audit, settings } = app.services;
     const ip = request.ip;
 
@@ -66,9 +70,15 @@ export function registerAuth(app) {
       return reply.code(429).send({ error: 'too_many_attempts', retryAfterMs: gate.retryAfterMs });
     }
 
-    const password = request.body?.password;
-    const stored = settings.get('admin_password_hash', null);
-    const ok = stored !== null && (await verifyPassword(password, stored));
+    // check() reserved an attempt slot; every path below must settle it.
+    let ok;
+    try {
+      const stored = settings.get('admin_password_hash', null);
+      ok = stored !== null && (await verifyPassword(request.body?.password, stored));
+    } catch (err) {
+      limiter.release(ip);
+      throw err;
+    }
 
     if (!ok) {
       limiter.fail(ip);
