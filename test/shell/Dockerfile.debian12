@@ -1,0 +1,6 @@
+# Container image for test/shell/install-in-container.sh (debian12). Built with the working
+# tree as context; the installer itself must install everything else it needs.
+FROM debian:12
+COPY . /tmp/craftrcon
+RUN chmod 0755 /tmp/craftrcon/install.sh /tmp/craftrcon/update.sh
+WORKDIR /tmp/craftrcon

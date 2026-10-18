@@ -337,6 +337,11 @@ port_in_use() {
   ' "${_files[@]}"
 }
 
+# curl_progress: the curl flag for big downloads (a progress bar only on a terminal).
+curl_progress() {
+  if [ -t 2 ]; then echo --progress-bar; else echo -sS; fi
+}
+
 # wait_health URL TIMEOUT_S: polls URL with curl until the body has "ok":true; returns 1 on
 # timeout. Always polls at least once, even with a timeout of 0.
 wait_health() {

@@ -1,0 +1,6 @@
+# Container image for test/shell/install-in-container.sh (fedora). Built with the working
+# tree as context; the installer itself must install everything else it needs.
+FROM fedora:44
+COPY . /tmp/craftrcon
+RUN chmod 0755 /tmp/craftrcon/install.sh /tmp/craftrcon/update.sh
+WORKDIR /tmp/craftrcon

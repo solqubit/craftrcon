@@ -193,6 +193,9 @@ assert_ok "ss: listening port found" env PATH="$TMP/bin-ss:$PATH" bash -c ". '$C
 assert_ok "ss: ipv6 listener found" env PATH="$TMP/bin-ss:$PATH" bash -c ". '$COMMON'; port_in_use 22"
 assert_fail "ss: free port" env PATH="$TMP/bin-ss:$PATH" bash -c ". '$COMMON'; port_in_use 80"
 
+echo "curl_progress"
+assert_eq "-sS" "$(curl_progress 2>/dev/null)" "no progress bar when stderr is not a terminal"
+
 echo "wait_health"
 mkdir -p "$TMP/bin-curl"
 cat >"$TMP/bin-curl/curl" <<SH
