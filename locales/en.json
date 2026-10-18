@@ -572,5 +572,123 @@
     "whitelist": "Manage the whitelist",
     "worldborder": "Manage the world border",
     "xp": "Add, set or query experience"
+  },
+  "world": {
+    "subtitle": "Time, weather, difficulty, gamerules and border of {name}",
+    "time": {
+      "title": "Time",
+      "hint": "Set the time of day in ticks (0 to 24000).",
+      "day": "Day",
+      "noon": "Noon",
+      "night": "Night",
+      "midnight": "Midnight",
+      "exact": "Exact time (ticks)",
+      "set": "Set"
+    },
+    "weather": {
+      "title": "Weather",
+      "clear": "Clear",
+      "rain": "Rain",
+      "thunder": "Thunder"
+    },
+    "difficulty": {
+      "title": "Difficulty",
+      "hint": "Changing the difficulty asks for confirmation.",
+      "peaceful": "Peaceful",
+      "easy": "Easy",
+      "normal": "Normal",
+      "hard": "Hard"
+    },
+    "save": {
+      "title": "Save",
+      "hint": "Writes the world to disk right now.",
+      "button": "Save world"
+    },
+    "border": {
+      "title": "World border",
+      "size": "Size (blocks)",
+      "sizeHint": "1 to 59999968. With seconds, the border moves gradually.",
+      "seconds": "Seconds (optional)",
+      "setSize": "Set size",
+      "centerTitle": "Border center",
+      "x": "X",
+      "z": "Z",
+      "setCenter": "Set center"
+    },
+    "gamerules": {
+      "title": "Gamerules",
+      "hint": "Loaded from the server when you open this section.",
+      "show": "Show gamerules",
+      "hide": "Hide gamerules",
+      "loading": "Loading gamerules… this can take a few seconds.",
+      "loadFailed": "Couldn't load the gamerules",
+      "empty": "The server didn't report any gamerules.",
+      "set": "Set",
+      "booleans": "On or off",
+      "numbers": "Numbers"
+    },
+    "errors": {
+      "invalid_time": "Enter a whole number from 0 to 24000.",
+      "invalid_weather": "Choose a valid weather.",
+      "invalid_difficulty": "Choose a valid difficulty.",
+      "unknown_gamerule": "The server didn't report that gamerule.",
+      "invalid_value": "Enter a whole number of 0 or more.",
+      "invalid_size": "Enter a size from 1 to 59999968.",
+      "invalid_seconds": "Enter a whole number of seconds, or leave it empty.",
+      "invalid_coords": "Enter a number between -29999984 and 29999984 for X and Z."
+    }
+  },
+  "broadcast": {
+    "open": "Write an announcement",
+    "title": "Broadcast",
+    "message": "Message",
+    "placeholder": "Type your announcement. Use the buttons or & codes (&a, &l…) for colors and formats.",
+    "colors": "Colors",
+    "formats": "Formats",
+    "format": {
+      "bold": "Bold",
+      "italic": "Italic",
+      "underline": "Underline",
+      "strikethrough": "Strikethrough",
+      "reset": "Reset"
+    },
+    "mode": "Type",
+    "modes": {
+      "tellraw": "Formatted (tellraw)",
+      "say": "Simple (say)"
+    },
+    "modeHint": {
+      "tellraw": "Shown in chat with the colors and formats you pick.",
+      "say": "Shown as “[Server] message”. Colors and formats are not applied."
+    },
+    "preview": "Preview",
+    "previewEmpty": "Your announcement appears here.",
+    "bytesLeft": "{count} bytes left",
+    "bytesOver": "{count} bytes over the limit",
+    "send": "Send to everyone",
+    "versionLoading": "Detecting the server version…",
+    "versionUnknown": "Couldn't detect the server version; the message is sent in the classic JSON format.",
+    "colorNames": {
+      "black": "Black",
+      "dark_blue": "Dark blue",
+      "dark_green": "Dark green",
+      "dark_aqua": "Dark aqua",
+      "dark_red": "Dark red",
+      "dark_purple": "Purple",
+      "gold": "Gold",
+      "gray": "Gray",
+      "dark_gray": "Dark gray",
+      "blue": "Blue",
+      "green": "Green",
+      "aqua": "Aqua",
+      "red": "Red",
+      "light_purple": "Pink",
+      "yellow": "Yellow",
+      "white": "White"
+    },
+    "card": {
+      "title": "Announcements",
+      "text": "Send a message to everyone online, with colors and formats."
+    }
   }
 }

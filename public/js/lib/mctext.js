@@ -1,7 +1,7 @@
 // Minecraft legacy color text ("§a", "&l", "§x§r§r§g§g§b§b").
 // Shared by the backend and the browser: pure ES module, no imports.
 
-const COLORS = {
+export const COLORS = {
   0: '#000000', 1: '#0000AA', 2: '#00AA00', 3: '#00AAAA',
   4: '#AA0000', 5: '#AA00AA', 6: '#FFAA00', 7: '#AAAAAA',
   8: '#555555', 9: '#5555FF', a: '#55FF55', b: '#55FFFF',

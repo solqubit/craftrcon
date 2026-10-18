@@ -572,5 +572,123 @@
     "whitelist": "Gestiona la lista blanca",
     "worldborder": "Gestiona el borde del mundo",
     "xp": "Suma, define o consulta experiencia"
+  },
+  "world": {
+    "subtitle": "Hora, clima, dificultad, gamerules y borde de {name}",
+    "time": {
+      "title": "Hora",
+      "hint": "Fija la hora del día en ticks (de 0 a 24000).",
+      "day": "Día",
+      "noon": "Mediodía",
+      "night": "Noche",
+      "midnight": "Medianoche",
+      "exact": "Hora exacta (ticks)",
+      "set": "Fijar"
+    },
+    "weather": {
+      "title": "Clima",
+      "clear": "Despejado",
+      "rain": "Lluvia",
+      "thunder": "Tormenta"
+    },
+    "difficulty": {
+      "title": "Dificultad",
+      "hint": "Cambiar la dificultad pide confirmación.",
+      "peaceful": "Pacífico",
+      "easy": "Fácil",
+      "normal": "Normal",
+      "hard": "Difícil"
+    },
+    "save": {
+      "title": "Guardar",
+      "hint": "Escribe el mundo en el disco ahora mismo.",
+      "button": "Guardar mundo"
+    },
+    "border": {
+      "title": "Borde del mundo",
+      "size": "Tamaño (bloques)",
+      "sizeHint": "De 1 a 59999968. Con segundos, el borde se mueve de forma gradual.",
+      "seconds": "Segundos (opcional)",
+      "setSize": "Fijar tamaño",
+      "centerTitle": "Centro del borde",
+      "x": "X",
+      "z": "Z",
+      "setCenter": "Fijar centro"
+    },
+    "gamerules": {
+      "title": "Gamerules",
+      "hint": "Se cargan desde el servidor al abrir esta sección.",
+      "show": "Mostrar gamerules",
+      "hide": "Ocultar gamerules",
+      "loading": "Cargando gamerules… puede tardar unos segundos.",
+      "loadFailed": "No se pudieron cargar las gamerules",
+      "empty": "El servidor no informó ninguna gamerule.",
+      "set": "Fijar",
+      "booleans": "Activadas o desactivadas",
+      "numbers": "Números"
+    },
+    "errors": {
+      "invalid_time": "Ingresa un número entero de 0 a 24000.",
+      "invalid_weather": "Elige un clima válido.",
+      "invalid_difficulty": "Elige una dificultad válida.",
+      "unknown_gamerule": "El servidor no informó esa gamerule.",
+      "invalid_value": "Ingresa un número entero de 0 o más.",
+      "invalid_size": "Ingresa un tamaño de 1 a 59999968.",
+      "invalid_seconds": "Ingresa un número entero de segundos, o déjalo vacío.",
+      "invalid_coords": "Ingresa un número entre -29999984 y 29999984 para X y Z."
+    }
+  },
+  "broadcast": {
+    "open": "Escribir un anuncio",
+    "title": "Anuncio",
+    "message": "Mensaje",
+    "placeholder": "Escribe tu anuncio. Usa los botones o los códigos & (&a, &l…) para colores y formatos.",
+    "colors": "Colores",
+    "formats": "Formatos",
+    "format": {
+      "bold": "Negrita",
+      "italic": "Cursiva",
+      "underline": "Subrayado",
+      "strikethrough": "Tachado",
+      "reset": "Restablecer"
+    },
+    "mode": "Tipo",
+    "modes": {
+      "tellraw": "Con formato (tellraw)",
+      "say": "Simple (say)"
+    },
+    "modeHint": {
+      "tellraw": "Se muestra en el chat con los colores y formatos que elijas.",
+      "say": "Se muestra como «[Server] mensaje». No se aplican colores ni formatos."
+    },
+    "preview": "Vista previa",
+    "previewEmpty": "Tu anuncio aparece aquí.",
+    "bytesLeft": "Quedan {count} bytes",
+    "bytesOver": "Te pasaste por {count} bytes",
+    "send": "Enviar a todos",
+    "versionLoading": "Detectando la versión del servidor…",
+    "versionUnknown": "No se pudo detectar la versión del servidor; el mensaje se envía en el formato JSON clásico.",
+    "colorNames": {
+      "black": "Negro",
+      "dark_blue": "Azul oscuro",
+      "dark_green": "Verde oscuro",
+      "dark_aqua": "Aqua oscuro",
+      "dark_red": "Rojo oscuro",
+      "dark_purple": "Morado",
+      "gold": "Dorado",
+      "gray": "Gris",
+      "dark_gray": "Gris oscuro",
+      "blue": "Azul",
+      "green": "Verde",
+      "aqua": "Aqua",
+      "red": "Rojo",
+      "light_purple": "Rosa",
+      "yellow": "Amarillo",
+      "white": "Blanco"
+    },
+    "card": {
+      "title": "Anuncios",
+      "text": "Envía un mensaje a todos los que están conectados, con colores y formatos."
+    }
   }
 }

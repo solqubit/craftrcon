@@ -1,7 +1,8 @@
 // Sends commands to the active server from a page (Players, Moderation):
 //
-//   const { send, busy, confirmDialog } = useCommandRunner(server.id);
+//   const { send, busy, confirmDialog, lastReply } = useCommandRunner(server.id);
 //   const sent = await send('ban Steve', ask?);   // true when the server took it
+//   lastReply.current: the text the server answered to the last command that went through
 //   ... render ${confirmDialog} somewhere in the page ...
 //
 // It owns the dangerous-commands list (fetched once, defaults on failure), the
@@ -9,7 +10,7 @@
 // 'ui' (audit log, not console history) and the toast: the server's reply, or
 // the translated error. `ask` ({ title, message, label, danger }) makes a
 // command that isn't on the list ask for confirmation too.
-import { html, useEffect, useState } from '../../vendor/htm-preact.js';
+import { html, useEffect, useRef, useState } from '../../vendor/htm-preact.js';
 import { api } from '../api.js';
 import { t } from '../i18n.js';
 import { DEFAULT_DANGEROUS_COMMANDS } from '../data/dangerous.js';
@@ -23,6 +24,7 @@ export function useCommandRunner(serverId) {
   const [dangerous, setDangerous] = useState(DEFAULT_DANGEROUS_COMMANDS);
   const [pending, setPending] = useState(null); // { command, ask, resolve }: awaiting a yes
   const [busy, setBusy] = useState(false);
+  const lastReply = useRef('');
 
   useEffect(() => {
     api('/api/settings/dangerous-commands')
@@ -38,6 +40,7 @@ export function useCommandRunner(serverId) {
       if (result.ok) {
         sent = true;
         const reply = commandReply(result);
+        lastReply.current = reply;
         if (reply) toast(html`<${McText} text=${reply} />`, { type: 'info' });
         else toast(t('common.commandSent'));
       } else {
@@ -98,5 +101,5 @@ export function useCommandRunner(serverId) {
     />`;
   }
 
-  return { send, busy, confirmDialog };
+  return { send, busy, confirmDialog, lastReply };
 }

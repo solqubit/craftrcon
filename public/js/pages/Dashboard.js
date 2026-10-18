@@ -18,6 +18,7 @@ import { MINI_CONSOLE_LINES, offlineErrorKey, playersView, tail, tpsLevel, tpsTe
 import { usePolling } from '../lib/polling.js';
 import { getScreen, nextSendId, updateScreen } from '../lib/screens.js';
 import { ActiveServer } from '../components/ActiveServer.js';
+import { Broadcast } from '../components/Broadcast.js';
 import { Confirm } from '../components/Confirm.js';
 import { Entry } from '../components/ConsoleEntry.js';
 import { Empty } from '../components/Empty.js';
@@ -226,6 +227,17 @@ function PlayersCard({ players, onRetry }) {
   </section>`;
 }
 
+// Opens the announcement editor (the same modal as the World page).
+function BroadcastCard({ onOpen }) {
+  return html`<section class="card dash-broadcast" aria-labelledby="dash-broadcast-title">
+    <div class="dash-broadcast-body">
+      <h2 id="dash-broadcast-title" class="card-title">${t('broadcast.card.title')}</h2>
+      <p class="dash-muted">${t('broadcast.card.text')}</p>
+    </div>
+    <button type="button" class="btn btn-primary btn-sm" onClick=${onOpen}>${t('broadcast.open')}</button>
+  </section>`;
+}
+
 // ---------- Page ----------
 
 function DashboardView({ server }) {
@@ -238,6 +250,7 @@ function DashboardView({ server }) {
   const [range, setRange] = useState('24h');
   const [entries, setEntries] = useState(() => getScreen(id));
   const [dangerous, setDangerous] = useState(DEFAULT_DANGEROUS_COMMANDS);
+  const [broadcasting, setBroadcasting] = useState(false);
 
   const update = (change) => {
     const previous = getScreen(id);
@@ -310,7 +323,9 @@ function DashboardView({ server }) {
           <div class="dash-row">
             <${MiniConsole} entries=${entries} dangerous=${dangerous} serverId=${id} update=${update} lang=${lang} />
             <${PlayersCard} players=${players} onRetry=${() => { setPlayers(null); loadPlayers(); }} />
-          </div>`
+          </div>
+          <${BroadcastCard} onOpen=${() => setBroadcasting(true)} />
+          ${broadcasting && html`<${Broadcast} server=${server} version=${status.version ?? ''} onClose=${() => setBroadcasting(false)} />`}`
       : html`<${Offline} status=${status} onRetry=${() => { setStatus(null); loadStatus(); }} />${chart}`;
   }
 
