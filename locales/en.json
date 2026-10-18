@@ -314,6 +314,90 @@
       "raw": "The server's answer wasn't recognized:"
     }
   },
+  "players": {
+    "subtitle": "Players online on {name}.",
+    "count": "{online} of {max} online",
+    "countOnly": "{online} online",
+    "listLabel": "Players online",
+    "invalidName": "This name can't be used in commands from here.",
+    "loadFailed": {
+      "title": "Couldn't load the players"
+    },
+    "refreshFailed": "Couldn't refresh the list ({reason}). Showing the last known players.",
+    "empty": {
+      "title": "Nobody is online",
+      "message": "Players who join {name} will show up here."
+    },
+    "raw": {
+      "title": "The server's answer",
+      "hint": "It isn't in the usual format, so it's shown as is. Actions aren't available."
+    },
+    "menu": {
+      "label": "Actions for {name}"
+    },
+    "actions": {
+      "kick": "Kick…",
+      "ban": "Ban…",
+      "op": "Make operator",
+      "deop": "Remove operator",
+      "gamemode": "Change gamemode…",
+      "teleport": "Teleport…",
+      "give": "Give item…",
+      "tell": "Send message…",
+      "whitelistAdd": "Add to whitelist",
+      "whitelistRemove": "Remove from whitelist"
+    },
+    "modes": {
+      "survival": "Survival",
+      "creative": "Creative",
+      "adventure": "Adventure",
+      "spectator": "Spectator"
+    },
+    "dialog": {
+      "title": {
+        "kick": "Kick {name}",
+        "ban": "Ban {name}",
+        "gamemode": "Gamemode of {name}",
+        "teleport": "Teleport {name}",
+        "give": "Give an item to {name}",
+        "tell": "Message {name}"
+      },
+      "submit": {
+        "kick": "Kick",
+        "ban": "Ban",
+        "gamemode": "Apply",
+        "teleport": "Teleport",
+        "give": "Give",
+        "tell": "Send"
+      },
+      "reason": "Reason (optional)",
+      "reasonPlaceholder": "Shown to the player",
+      "mode": "Gamemode",
+      "destination": "Destination",
+      "toPlayer": "To a player",
+      "toCoords": "To coordinates",
+      "targetPlayer": "Player",
+      "noOthers": "No other player is online. Use coordinates instead.",
+      "coordinates": "Coordinates",
+      "coordsHint": "~ keeps the current value, ~5 moves 5 blocks from it, and ^ uses the direction the player faces.",
+      "item": "Item",
+      "itemHint": "Type to search, e.g. diamond_sword.",
+      "itemSuggestions": "Item suggestions",
+      "count": "Amount",
+      "message": "Message"
+    },
+    "errors": {
+      "invalid_player": "This player can't be used in a command.",
+      "invalid_mode": "Choose one of the gamemodes.",
+      "invalid_item": "Enter an item ID, like diamond_sword.",
+      "invalid_count": "Enter a whole number from 1 to 6400.",
+      "invalid_coords": "Enter a number, ~, ~5 or ^ in each box. ^ can't be mixed with the others.",
+      "empty_message": "Type a message."
+    },
+    "toast": {
+      "sent": "Command sent."
+    }
+  },
   "cmd": {
     "advancement": "Grant or revoke advancements",
     "attribute": "Read or change an entity attribute",

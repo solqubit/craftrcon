@@ -15,6 +15,7 @@ import { DEFAULT_DANGEROUS_COMMANDS } from '../data/dangerous.js';
 import { addLive, addPending, commandProblem, errorKey, failSent, normalizeCommand, resolveSent } from '../lib/console.js';
 import { isDangerous } from '../lib/dangerous.js';
 import { MINI_CONSOLE_LINES, offlineErrorKey, playersView, tail, tpsLevel, tpsText, versionLabel } from '../lib/dashboard.js';
+import { usePolling } from '../lib/polling.js';
 import { getScreen, nextSendId, updateScreen } from '../lib/screens.js';
 import { ActiveServer } from '../components/ActiveServer.js';
 import { Confirm } from '../components/Confirm.js';
@@ -30,37 +31,6 @@ const PLAYERS_POLL_MS = 30_000;
 const SAMPLES_POLL_MS = 60_000;
 const RANGES = { '24h': 24 * 3600e3, '7d': 7 * 24 * 3600e3 };
 const CHART_HEIGHT = 200;
-
-// Runs `fn(isCurrent)` now and every `ms` while the tab is visible, restarting
-// whenever `deps` change. `isCurrent()` turns false once that run's effect is
-// gone, so a slow answer can tell it is stale.
-function usePolling(fn, ms, deps) {
-  const latest = useRef(fn);
-  latest.current = fn;
-  useEffect(() => {
-    let current = true;
-    let timer = null;
-    const isCurrent = () => current;
-    const tick = () => latest.current(isCurrent);
-    const start = () => {
-      if (timer !== null) return;
-      tick();
-      timer = setInterval(tick, ms);
-    };
-    const stop = () => {
-      clearInterval(timer);
-      timer = null;
-    };
-    const onVisibility = () => (document.hidden ? stop() : start());
-    document.addEventListener('visibilitychange', onVisibility);
-    if (!document.hidden) start();
-    return () => {
-      current = false;
-      stop();
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, deps);
-}
 
 // ---------- Pieces ----------
 

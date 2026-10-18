@@ -314,6 +314,90 @@
       "raw": "No se reconoció la respuesta del servidor:"
     }
   },
+  "players": {
+    "subtitle": "Jugadores conectados en {name}.",
+    "count": "{online} de {max} conectados",
+    "countOnly": "{online} conectados",
+    "listLabel": "Jugadores conectados",
+    "invalidName": "Este nombre no se puede usar en comandos desde aquí.",
+    "loadFailed": {
+      "title": "No se pudieron cargar los jugadores"
+    },
+    "refreshFailed": "No se pudo actualizar la lista ({reason}). Se muestran los últimos jugadores conocidos.",
+    "empty": {
+      "title": "No hay nadie conectado",
+      "message": "Los jugadores que entren a {name} aparecerán aquí."
+    },
+    "raw": {
+      "title": "La respuesta del servidor",
+      "hint": "No tiene el formato habitual, así que se muestra tal cual. Las acciones no están disponibles."
+    },
+    "menu": {
+      "label": "Acciones para {name}"
+    },
+    "actions": {
+      "kick": "Expulsar…",
+      "ban": "Banear…",
+      "op": "Hacer operador",
+      "deop": "Quitar operador",
+      "gamemode": "Cambiar modo de juego…",
+      "teleport": "Teletransportar…",
+      "give": "Dar ítem…",
+      "tell": "Enviar mensaje…",
+      "whitelistAdd": "Añadir a la whitelist",
+      "whitelistRemove": "Quitar de la whitelist"
+    },
+    "modes": {
+      "survival": "Supervivencia",
+      "creative": "Creativo",
+      "adventure": "Aventura",
+      "spectator": "Espectador"
+    },
+    "dialog": {
+      "title": {
+        "kick": "Expulsar a {name}",
+        "ban": "Banear a {name}",
+        "gamemode": "Modo de juego de {name}",
+        "teleport": "Teletransportar a {name}",
+        "give": "Dar un ítem a {name}",
+        "tell": "Mensaje para {name}"
+      },
+      "submit": {
+        "kick": "Expulsar",
+        "ban": "Banear",
+        "gamemode": "Aplicar",
+        "teleport": "Teletransportar",
+        "give": "Dar",
+        "tell": "Enviar"
+      },
+      "reason": "Motivo (opcional)",
+      "reasonPlaceholder": "Se le muestra al jugador",
+      "mode": "Modo de juego",
+      "destination": "Destino",
+      "toPlayer": "A un jugador",
+      "toCoords": "A coordenadas",
+      "targetPlayer": "Jugador",
+      "noOthers": "No hay otro jugador conectado. Usa coordenadas.",
+      "coordinates": "Coordenadas",
+      "coordsHint": "~ mantiene el valor actual, ~5 se mueve 5 bloques desde él y ^ usa la dirección en la que mira el jugador.",
+      "item": "Ítem",
+      "itemHint": "Escribe para buscar, p. ej. diamond_sword.",
+      "itemSuggestions": "Sugerencias de ítems",
+      "count": "Cantidad",
+      "message": "Mensaje"
+    },
+    "errors": {
+      "invalid_player": "Este jugador no se puede usar en un comando.",
+      "invalid_mode": "Elige uno de los modos de juego.",
+      "invalid_item": "Escribe el ID de un ítem, como diamond_sword.",
+      "invalid_count": "Escribe un número entero de 1 a 6400.",
+      "invalid_coords": "Escribe un número, ~, ~5 o ^ en cada casilla. ^ no se puede mezclar con los demás.",
+      "empty_message": "Escribe un mensaje."
+    },
+    "toast": {
+      "sent": "Comando enviado."
+    }
+  },
   "cmd": {
     "advancement": "Da o quita logros (advancements)",
     "attribute": "Consulta o cambia un atributo de una entidad",

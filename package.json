@@ -18,7 +18,8 @@
     "test": "node --test \"test/**/*.test.js\"",
     "test:shell": "bash test/shell/run.sh",
     "vendor": "node scripts/vendor.js",
-    "fake-mc": "node scripts/dev-fake-server.js"
+    "fake-mc": "node scripts/dev-fake-server.js",
+    "gen-items": "node scripts/gen-items.js"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.3",
