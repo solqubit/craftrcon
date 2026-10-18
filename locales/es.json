@@ -398,6 +398,97 @@
       "sent": "Comando enviado."
     }
   },
+  "moderation": {
+    "subtitle": "Bans, whitelist y operadores de {name}.",
+    "tabsLabel": "Secciones de moderación",
+    "tabs": {
+      "bans": "Bans",
+      "ips": "Bans de IP",
+      "whitelist": "Whitelist",
+      "ops": "Operadores"
+    },
+    "player": "Jugador",
+    "address": "Dirección IP",
+    "source": "Baneado por",
+    "reason": "Motivo (opcional)",
+    "reasonColumn": "Motivo",
+    "reasonPlaceholder": "Se le muestra al jugador",
+    "noReason": "Sin motivo",
+    "filter": {
+      "count": "{shown} de {total}",
+      "none": "Nada coincide con \"{query}\"."
+    },
+    "loadFailed": {
+      "title": "No se pudo cargar esta lista"
+    },
+    "refreshFailed": "No se pudo actualizar la lista ({reason}). Se muestran las últimas entradas conocidas.",
+    "raw": {
+      "title": "La respuesta del servidor",
+      "hint": "No tiene el formato habitual, así que se muestra tal cual. El formulario de arriba sigue funcionando."
+    },
+    "bans": {
+      "addTitle": "Banear a un jugador",
+      "submit": "Banear",
+      "listTitle": "Jugadores baneados",
+      "filter": "Filtrar por jugador, quién baneó o motivo",
+      "empty": {
+        "title": "No hay jugadores baneados",
+        "message": "Los jugadores baneados de {name} aparecerán aquí."
+      }
+    },
+    "ips": {
+      "addTitle": "Banear una dirección IP",
+      "target": "Dirección IP o nombre de jugador",
+      "targetHint": "Con el nombre de un jugador se banea la dirección desde la que está conectado.",
+      "submit": "Banear IP",
+      "listTitle": "Direcciones IP baneadas",
+      "filter": "Filtrar por dirección, quién baneó o motivo",
+      "empty": {
+        "title": "No hay direcciones IP baneadas",
+        "message": "Las direcciones baneadas de {name} aparecerán aquí."
+      }
+    },
+    "whitelist": {
+      "toggleTitle": "Whitelist",
+      "toggleHint": "Mientras está activada, solo pueden entrar los jugadores de la lista. El panel no puede saber si está activada ahora.",
+      "on": "Activar",
+      "off": "Desactivar",
+      "addTitle": "Añadir un jugador",
+      "submit": "Añadir",
+      "listTitle": "Jugadores en la whitelist",
+      "filter": "Filtrar por nombre",
+      "empty": {
+        "title": "La whitelist está vacía",
+        "message": "Los jugadores que añadas aparecerán aquí."
+      }
+    },
+    "ops": {
+      "title": "Operadores",
+      "hint": "Minecraft no permite listar los operadores por RCON, así que no se pueden mostrar aquí. Igual puedes añadir o quitar uno por su nombre.",
+      "add": "Hacer operador",
+      "remove": "Quitar operador"
+    },
+    "actions": {
+      "label": "Acciones",
+      "unban": "Quitar ban",
+      "unbanName": "Quitar el ban a {name}",
+      "remove": "Quitar",
+      "removeName": "Quitar a {name} de la whitelist"
+    },
+    "confirm": {
+      "unbanTitle": "¿Quitar el ban a {name}?",
+      "unban": "{name} podrá volver a entrar al servidor.",
+      "removeTitle": "¿Quitar a {name} de la whitelist?",
+      "remove": "{name} no podrá entrar mientras la whitelist esté activada."
+    },
+    "errors": {
+      "invalid_player": "Este nombre no se puede usar en un comando. Usa un nombre de Minecraft: letras, números y _, hasta 16.",
+      "invalid_ip": "Escribe una dirección IP válida, como 203.0.113.7."
+    },
+    "toast": {
+      "sent": "Comando enviado."
+    }
+  },
   "cmd": {
     "advancement": "Da o quita logros (advancements)",
     "attribute": "Consulta o cambia un atributo de una entidad",

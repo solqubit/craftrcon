@@ -2628,6 +2628,202 @@ button, input, select, textarea {
   border-radius: var(--radius-sm);
 }
 
+/* ---------- Moderation page ---------- */
+.mod-tabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-bottom: 1px solid var(--border);
+}
+
+.mod-tab {
+  flex-shrink: 0;
+  height: 38px;
+  padding: 0 14px;
+  margin-bottom: -1px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.mod-tab:hover {
+  color: var(--text);
+}
+
+.mod-tab.on {
+  border-bottom-color: var(--accent);
+  color: var(--accent);
+}
+
+.mod-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+
+.mod-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.mod-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mod-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.mod-field {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.mod-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* The buttons sit on their own row under the fields. */
+.mod-form > .mod-form-actions {
+  flex-basis: 100%;
+}
+
+.mod-filter {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mod-filter .input {
+  max-width: 340px;
+}
+
+.mod-filter-count {
+  flex-shrink: 0;
+}
+
+.mod-nomatch {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.mod-table-wrap {
+  overflow-x: auto;
+}
+
+.mod-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+
+.mod-table th {
+  padding: 6px 10px;
+  color: var(--subtle);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.mod-table td {
+  padding: 9px 10px;
+  border-top: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.mod-who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.mod-reason {
+  overflow-wrap: anywhere;
+}
+
+.mod-none {
+  color: var(--faint);
+}
+
+.mod-act {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.mod-names {
+  margin: 0;
+  padding: 0;
+}
+
+@media (max-width: 767.98px) {
+  .mod-filter {
+    flex-wrap: wrap;
+  }
+
+  .mod-filter .input {
+    max-width: none;
+  }
+
+  /* Each ban becomes a small card instead of a table row. */
+  .mod-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .mod-table,
+  .mod-table tbody,
+  .mod-table tr,
+  .mod-table td {
+    display: block;
+  }
+
+  .mod-table tr {
+    padding: 10px 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .mod-table td {
+    padding: 3px 0;
+    border: 0;
+  }
+
+  .mod-table td.mod-who {
+    display: flex;
+  }
+
+  .mod-table td[data-label]:not(.mod-who)::before {
+    content: attr(data-label) ": ";
+    color: var(--subtle);
+    font-size: 12px;
+  }
+
+  .mod-act {
+    width: auto;
+    padding-top: 8px;
+    text-align: left;
+  }
+}
+
 /* ---------- Minecraft bits ---------- */
 .head {
   flex-shrink: 0;

@@ -398,6 +398,97 @@
       "sent": "Command sent."
     }
   },
+  "moderation": {
+    "subtitle": "Bans, whitelist and operators of {name}.",
+    "tabsLabel": "Moderation sections",
+    "tabs": {
+      "bans": "Bans",
+      "ips": "IP bans",
+      "whitelist": "Whitelist",
+      "ops": "Operators"
+    },
+    "player": "Player",
+    "address": "IP address",
+    "source": "Banned by",
+    "reason": "Reason (optional)",
+    "reasonColumn": "Reason",
+    "reasonPlaceholder": "Shown to the player",
+    "noReason": "No reason given",
+    "filter": {
+      "count": "{shown} of {total}",
+      "none": "Nothing matches \"{query}\"."
+    },
+    "loadFailed": {
+      "title": "Couldn't load this list"
+    },
+    "refreshFailed": "Couldn't refresh the list ({reason}). Showing the last known entries.",
+    "raw": {
+      "title": "The server's answer",
+      "hint": "It isn't in the usual format, so it's shown as is. The form above still works."
+    },
+    "bans": {
+      "addTitle": "Ban a player",
+      "submit": "Ban",
+      "listTitle": "Banned players",
+      "filter": "Filter by player, source or reason",
+      "empty": {
+        "title": "No banned players",
+        "message": "Players banned from {name} will be listed here."
+      }
+    },
+    "ips": {
+      "addTitle": "Ban an IP address",
+      "target": "IP address or player name",
+      "targetHint": "A player name bans the address that player is connected from.",
+      "submit": "Ban IP",
+      "listTitle": "Banned IP addresses",
+      "filter": "Filter by address, source or reason",
+      "empty": {
+        "title": "No banned IP addresses",
+        "message": "Addresses banned from {name} will be listed here."
+      }
+    },
+    "whitelist": {
+      "toggleTitle": "Whitelist",
+      "toggleHint": "While it's on, only whitelisted players can join. The panel can't tell whether it is on right now.",
+      "on": "Turn on",
+      "off": "Turn off",
+      "addTitle": "Add a player",
+      "submit": "Add",
+      "listTitle": "Whitelisted players",
+      "filter": "Filter by name",
+      "empty": {
+        "title": "The whitelist is empty",
+        "message": "Players you add will be listed here."
+      }
+    },
+    "ops": {
+      "title": "Operators",
+      "hint": "Minecraft doesn't let RCON list the operators, so they can't be shown here. You can still add or remove one by name.",
+      "add": "Make operator",
+      "remove": "Remove operator"
+    },
+    "actions": {
+      "label": "Actions",
+      "unban": "Unban",
+      "unbanName": "Unban {name}",
+      "remove": "Remove",
+      "removeName": "Remove {name} from the whitelist"
+    },
+    "confirm": {
+      "unbanTitle": "Unban {name}?",
+      "unban": "{name} will be able to join the server again.",
+      "removeTitle": "Remove {name} from the whitelist?",
+      "remove": "{name} won't be able to join while the whitelist is on."
+    },
+    "errors": {
+      "invalid_player": "This name can't be used in a command. Use a Minecraft name: letters, digits and _, up to 16.",
+      "invalid_ip": "Enter a valid IP address, like 203.0.113.7."
+    },
+    "toast": {
+      "sent": "Command sent."
+    }
+  },
   "cmd": {
     "advancement": "Grant or revoke advancements",
     "attribute": "Read or change an entity attribute",

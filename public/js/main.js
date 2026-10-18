@@ -10,12 +10,13 @@ import { Toasts, toast } from './components/Toast.js';
 import { Console } from './pages/Console.js';
 import { Dashboard } from './pages/Dashboard.js';
 import { Login } from './pages/Login.js';
+import { Moderation } from './pages/Moderation.js';
 import { Players } from './pages/Players.js';
 import { Servers } from './pages/Servers.js';
 
 // Section pages by route name. Later tasks register theirs here; until then a
 // section shows a placeholder.
-const PAGES = { dashboard: Dashboard, console: Console, players: Players, servers: Servers };
+const PAGES = { dashboard: Dashboard, console: Console, moderation: Moderation, players: Players, servers: Servers };
 
 function Placeholder({ route }) {
   return html`<div class="page">
