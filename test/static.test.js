@@ -15,13 +15,15 @@ function assertHtmlShell(res) {
   assert.equal(res.headers['referrer-policy'], 'no-referrer');
 }
 
-test('serves the SPA shell at / without a session, with security headers', async () => {
+test('serves the SPA shell at / without a session, with security headers', async (t) => {
   const { app } = await makeApp();
+  t.after(() => app.close());
   assertHtmlShell(await app.inject({ method: 'GET', url: '/' }));
 });
 
-test('index.html has no inline scripts', async () => {
+test('index.html has no inline scripts', async (t) => {
   const { app } = await makeApp();
+  t.after(() => app.close());
   const res = await app.inject({ method: 'GET', url: '/' });
   for (const [, attrs, body] of res.body.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/g)) {
     assert.match(attrs, /\bsrc="/);
@@ -29,14 +31,16 @@ test('index.html has no inline scripts', async () => {
   }
 });
 
-test('falls back to index.html for unknown paths outside /api/', async () => {
+test('falls back to index.html for unknown paths outside /api/', async (t) => {
   const { app } = await makeApp();
+  t.after(() => app.close());
   assertHtmlShell(await app.inject({ method: 'GET', url: '/dashboard' }));
   assertHtmlShell(await app.inject({ method: 'GET', url: '/some/deep/link' }));
 });
 
-test('serves static assets and locales without a session', async () => {
+test('serves static assets and locales without a session', async (t) => {
   const { app } = await makeApp();
+  t.after(() => app.close());
   const js = await app.inject({ method: 'GET', url: '/js/main.js' });
   assert.equal(js.statusCode, 200);
   assert.match(js.headers['content-type'], /javascript/);
@@ -56,8 +60,9 @@ test('serves static assets and locales without a session', async () => {
   assert.equal(es.statusCode, 200);
 });
 
-test('a missing file is a 404, not the SPA shell', async () => {
+test('a missing file is a 404, not the SPA shell', async (t) => {
   const { app } = await makeApp();
+  t.after(() => app.close());
   const res = await app.inject({ method: 'GET', url: '/js/missing.js' });
   assert.equal(res.statusCode, 404);
   assert.doesNotMatch(res.body, /<div id="app">/);
@@ -65,8 +70,27 @@ test('a missing file is a 404, not the SPA shell', async () => {
   assert.equal(locale.statusCode, 404);
 });
 
-test('unknown /api/ paths stay JSON 404s', async () => {
+test('encoded path traversal never reaches files outside public/ and locales/', async (t) => {
   const { app } = await makeApp();
+  t.after(() => app.close());
+  const urls = [
+    '/locales/..%2fpackage.json',
+    '/locales/..%2F..%2Fpackage.json',
+    '/js/..%2f..%2fsrc%2fapp.js',
+    '/..%2fsrc%2fapp.js',
+    '/%2e%2e/package.json',
+    '/locales/%2e%2e%2fpackage.json',
+  ];
+  for (const url of urls) {
+    const res = await app.inject({ method: 'GET', url });
+    assert.notEqual(res.statusCode, 200, url);
+    assert.doesNotMatch(res.body, /"name": "craftrcon"|registerStatic|fastifyStatic/, url);
+  }
+});
+
+test('unknown /api/ paths stay JSON 404s', async (t) => {
+  const { app } = await makeApp();
+  t.after(() => app.close());
   for (const method of ['GET', 'POST']) {
     for (const url of ['/api/does-not-exist', '/%61pi/does-not-exist', '/api']) {
       const res = await app.inject({ method, url });
@@ -76,15 +100,17 @@ test('unknown /api/ paths stay JSON 404s', async () => {
   }
 });
 
-test('non-GET requests outside /api/ are not answered with the shell', async () => {
+test('non-GET requests outside /api/ are not answered with the shell', async (t) => {
   const { app } = await makeApp();
+  t.after(() => app.close());
   const res = await app.inject({ method: 'POST', url: '/dashboard' });
   assert.equal(res.statusCode, 404);
   assert.doesNotMatch(res.body, /<div id="app">/);
 });
 
-test('API routes still require a session', async () => {
+test('API routes still require a session', async (t) => {
   const { app } = await makeApp();
+  t.after(() => app.close());
   const res = await app.inject({ method: 'GET', url: '/api/servers' });
   assert.equal(res.statusCode, 401);
 });

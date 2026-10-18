@@ -64,5 +64,5 @@ function lookup(dict, key) {
 export function t(key, vars) {
   const message = lookup(dictionaries[current], key) ?? lookup(dictionaries[DEFAULT_LANG], key) ?? key;
   if (!vars) return message;
-  return message.replace(/\{(\w+)\}/g, (match, name) => (name in vars ? String(vars[name]) : match));
+  return message.replace(/\{(\w+)\}/g, (match, name) => (Object.hasOwn(vars, name) ? String(vars[name]) : match));
 }

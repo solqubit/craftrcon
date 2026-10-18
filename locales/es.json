@@ -12,7 +12,7 @@
     "label": "Secciones",
     "openMenu": "Abrir menú",
     "closeMenu": "Cerrar menú",
-    "dashboard": "Panel",
+    "dashboard": "Inicio",
     "console": "Consola",
     "players": "Jugadores",
     "moderation": "Moderación",
@@ -28,7 +28,7 @@
     "language": "Idioma",
     "logout": "Cerrar sesión",
     "status": {
-      "checking": "Comprobando…",
+      "checking": "Verificando…",
       "online": "En línea",
       "offline": "Fuera de línea",
       "unknown": "Desconocido"

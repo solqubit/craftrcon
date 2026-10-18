@@ -52,21 +52,30 @@ export async function api(path, { method = 'GET', body } = {}) {
 }
 
 const RECONNECT_MS = 3000;
+const MAX_RECONNECT_MS = 60_000;
 const CLOSE_SESSION_REVOKED = 4401;
 
 // Opens the live stream of a server ({ type: 'console' | 'status', ... }
-// messages) and keeps it open, reconnecting every 3 s after a drop. Returns a
-// function that closes it for good.
+// messages) and keeps it open: 3 s after a drop it reconnects. When the
+// handshake itself fails (the socket closes before opening: panel down, server
+// deleted, session gone) each retry waits twice as long, up to 60 s; a
+// successful open resets the wait. Returns a function that closes it for good.
 export function openLive(serverId, onMessage) {
   const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const url = `${scheme}//${location.host}/api/servers/${encodeURIComponent(serverId)}/live`;
   let socket = null;
   let timer = null;
   let closed = false;
+  let delay = RECONNECT_MS;
 
   function connect() {
     timer = null;
+    let opened = false;
     socket = new WebSocket(url);
+    socket.onopen = () => {
+      opened = true;
+      delay = RECONNECT_MS;
+    };
     socket.onmessage = (event) => {
       let message;
       try {
@@ -84,7 +93,8 @@ export function openLive(serverId, onMessage) {
         sessionEnded();
         return;
       }
-      timer = setTimeout(connect, RECONNECT_MS);
+      timer = setTimeout(connect, delay);
+      if (!opened) delay = Math.min(delay * 2, MAX_RECONNECT_MS);
     };
   }
 

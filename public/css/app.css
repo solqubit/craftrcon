@@ -32,12 +32,15 @@
   --accent-ring: rgba(52, 211, 153, 0.18);
   --danger-soft: #2a1214;
   --danger-line: #4a1d21;
+  --danger-hover: #3a1719;
+  --danger-border: #6b2a2f;
   --danger-text: #fca5a5;
   --danger-ring: rgba(248, 113, 113, 0.18);
   --warn-soft: #2a2210;
   --warn-line: #4a3a12;
   --warn-text: #fcd34d;
   --info: #38bdf8;
+  --toast-bg: #151a20;
 
   /* Server colors (the `color` field of a server) */
   --c-emerald: #34d399;
@@ -198,8 +201,8 @@ button, input, select, textarea {
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: #3a1719;
-  border-color: #6b2a2f;
+  background: var(--danger-hover);
+  border-color: var(--danger-border);
   color: var(--danger-text);
 }
 
@@ -633,11 +636,18 @@ button, input, select, textarea {
   right: 16px;
   bottom: 16px;
   z-index: 100;
+  width: min(380px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.toast-stack {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: min(380px, calc(100vw - 32px));
-  pointer-events: none;
+}
+
+.toast-stack:not(:empty) ~ .toast-stack:not(:empty) {
+  margin-top: 8px;
 }
 
 .toast {
@@ -646,7 +656,7 @@ button, input, select, textarea {
   align-items: flex-start;
   gap: 10px;
   padding: 11px 8px 11px 14px;
-  background: #151a20;
+  background: var(--toast-bg);
   border: 1px solid var(--border-3);
   border-radius: var(--radius-md);
   box-shadow: inset 3px 0 0 var(--tone), 0 12px 40px rgba(0, 0, 0, 0.5);

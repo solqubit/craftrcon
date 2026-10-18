@@ -5,9 +5,7 @@ import { t } from '../i18n.js';
 import { Modal } from './Modal.js';
 
 export function Confirm({ open = true, title, message, confirmLabel, danger = false, busy = false, onConfirm, onCancel }) {
-  const close = () => {
-    if (!busy) onCancel?.();
-  };
+  const close = () => onCancel?.();
   const footer = html`
     <button type="button" class="btn btn-secondary" onClick=${close} disabled=${busy} autofocus=${danger}>
       ${t('common.cancel')}
@@ -24,7 +22,7 @@ export function Confirm({ open = true, title, message, confirmLabel, danger = fa
       ${confirmLabel ?? t('common.confirm')}
     </button>
   `;
-  return html`<${Modal} open=${open} title=${title} onClose=${close} footer=${footer} size="sm">
+  return html`<${Modal} open=${open} title=${title} onClose=${close} busy=${busy} footer=${footer} size="sm">
     ${typeof message === 'string' ? html`<p class="confirm-message">${message}</p>` : message}
   </${Modal}>`;
 }

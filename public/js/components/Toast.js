@@ -35,15 +35,24 @@ export function Toasts() {
     listeners.add(setList);
     return () => listeners.delete(setList);
   }, []);
-  return html`<div class="toast-region" role="status" aria-live="polite">
-    ${list.map(
-      (item) => html`<div key=${item.id} class=${`toast toast-${item.type}`}>
-        <${Icon} name=${item.type} class="toast-icon" />
-        <p class="toast-message">${item.message}</p>
-        <button type="button" class="icon-btn icon-btn-sm" aria-label=${t('common.dismiss')} onClick=${() => dismissToast(item.id)}>
-          <${Icon} name="close" size=${14} />
-        </button>
-      </div>`,
-    )}
+  // Two live regions that always exist (so additions are announced): errors
+  // interrupt (assertive), everything else waits its turn (polite).
+  return html`<div class="toast-region">
+    <div class="toast-stack" role="status" aria-live="polite">
+      ${list.filter((item) => item.type !== 'error').map(renderToast)}
+    </div>
+    <div class="toast-stack" role="alert" aria-live="assertive">
+      ${list.filter((item) => item.type === 'error').map(renderToast)}
+    </div>
+  </div>`;
+}
+
+function renderToast(item) {
+  return html`<div key=${item.id} class=${`toast toast-${item.type}`}>
+    <${Icon} name=${item.type} class="toast-icon" />
+    <p class="toast-message">${item.message}</p>
+    <button type="button" class="icon-btn icon-btn-sm" aria-label=${t('common.dismiss')} onClick=${() => dismissToast(item.id)}>
+      <${Icon} name="close" size=${14} />
+    </button>
   </div>`;
 }

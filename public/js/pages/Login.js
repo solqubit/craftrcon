@@ -8,7 +8,7 @@ import { store } from '../store.js';
 import { Brand, LangSelect } from '../components/Layout.js';
 import { Icon } from '../components/Icon.js';
 
-const RESET_COMMAND = './install --reset-password';
+const RESET_COMMAND = 'sudo ./install.sh --reset-password';
 const MARK = '\u0000';
 // Renders a translated sentence with `code` set in monospace where MARK was interpolated.
 const withCode = (text, code) => {

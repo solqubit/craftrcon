@@ -8,6 +8,7 @@ const LOCALES = {
   en: {
     greet: 'Hello, {name}!',
     count: '{n} of {max}',
+    inherited: 'Value: {toString}',
     nested: { onlyEnglish: 'Only in English' },
   },
   es: {
@@ -62,6 +63,8 @@ test('leaves unknown placeholders untouched', async () => {
   await i18n.setLang('en');
   assert.equal(i18n.t('greet'), 'Hello, {name}!');
   assert.equal(i18n.t('count', { n: 0 }), '0 of {max}');
+  // Only the object's own keys count, never inherited ones like toString.
+  assert.equal(i18n.t('inherited', {}), 'Value: {toString}');
 });
 
 test('setLang switches language and persists the choice', async () => {
