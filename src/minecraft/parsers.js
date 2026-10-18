@@ -126,12 +126,13 @@ export function parseWhitelist(t) {
 }
 
 // "TPS from last 1m, 5m, 15m: 20.0, *20.0, 19.97" ('*' marks an estimate).
+// Purpur prints four values ("5s, 1m, 5m, 15m"): the last three are always 1m, 5m, 15m.
 export function parseTps(t) {
   const m = /TPS from last[^:]*:([\s\S]*)$/i.exec(clean(t));
   if (!m) return null;
   const nums = m[1].replace(/\*/g, '').match(/\d+(?:\.\d+)?/g);
   if (!nums || nums.length < 3) return null;
-  return nums.slice(0, 3).map(Number);
+  return nums.slice(-3).map(Number);
 }
 
 // "Gamerule keepInventory is currently set to: false". The "is now set to"

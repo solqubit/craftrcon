@@ -114,6 +114,7 @@ export function registerServerRoutes(app) {
     }
     if (!server) return notFound(reply);
     app.services.manager.invalidate(id);
+    app.services.status.forget(id);
     app.services.audit.log({ serverId: id, origin: 'ui', action: 'server_update', detail: server.name });
     return server;
   });
@@ -124,6 +125,7 @@ export function registerServerRoutes(app) {
     const current = svc().get(id);
     if (!current || !svc().remove(id)) return notFound(reply);
     app.services.manager.invalidate(id);
+    app.services.status.forget(id);
     // Logged after the delete, with no server_id: the row would cascade away otherwise.
     app.services.audit.log({ origin: 'ui', action: 'server_delete', detail: current.name });
     return reply.code(204).send();

@@ -74,6 +74,7 @@ test('parseWhitelist', async (t) => {
 test('parseTps', () => {
   assert.deepEqual(parseTps('§6TPS from last 1m, 5m, 15m: §a20.0, §a*20.0, §a19.97'), [20, 20, 19.97]);
   assert.deepEqual(parseTps('TPS from last 1m, 5m, 15m: 18.5, 19.2, 20.0'), [18.5, 19.2, 20]);
+  assert.deepEqual(parseTps('TPS from last 5s, 1m, 5m, 15m: 20.0, 19.8, *19.9, 19.5'), [19.8, 19.9, 19.5]);
   assert.equal(parseTps('hello'), null);
   assert.equal(parseTps('TPS from last 1m, 5m, 15m: 20.0'), null);
 });

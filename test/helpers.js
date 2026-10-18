@@ -9,6 +9,8 @@ import { createAudit } from '../src/services/audit.js';
 import { createServers } from '../src/services/servers.js';
 import { createHub } from '../src/services/hub.js';
 import { createCommands } from '../src/services/commands.js';
+import { createStatus } from '../src/services/status.js';
+import { createSampler } from '../src/services/sampler.js';
 import { ConnectionManager } from '../src/minecraft/connection.js';
 
 export const TEST_HOST = 'panel.test';
@@ -26,6 +28,8 @@ export async function makeApp({ password = 'correct-horse-battery', config = {},
   const audit = createAudit(db);
   const manager = new ConnectionManager((id) => servers.credentials(id));
   const hub = createHub();
+  const commands = createCommands({ db, manager, audit, hub });
+  const status = createStatus({ servers, commands });
   const services = {
     settings,
     sessions: createSessions(db),
@@ -33,7 +37,9 @@ export async function makeApp({ password = 'correct-horse-battery', config = {},
     servers,
     manager,
     hub,
-    commands: createCommands({ db, manager, audit, hub }),
+    commands,
+    status,
+    sampler: createSampler({ db, servers, status, hub }),
     ...extra,
   };
   const app = buildApp({ config: { ...loadConfig({}), ...config }, db, services });

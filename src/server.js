@@ -10,6 +10,8 @@ import { createAudit } from './services/audit.js';
 import { createServers } from './services/servers.js';
 import { createHub } from './services/hub.js';
 import { createCommands } from './services/commands.js';
+import { createStatus } from './services/status.js';
+import { createSampler } from './services/sampler.js';
 import { ConnectionManager } from './minecraft/connection.js';
 
 const config = loadConfig();
@@ -22,6 +24,8 @@ const servers = createServers(db, key);
 const manager = new ConnectionManager((id) => servers.credentials(id));
 const audit = createAudit(db);
 const hub = createHub();
+const commands = createCommands({ db, manager, audit, hub });
+const status = createStatus({ servers, commands });
 
 const app = buildApp({
   config,
@@ -33,14 +37,18 @@ const app = buildApp({
     servers,
     manager,
     hub,
-    commands: createCommands({ db, manager, audit, hub }),
+    commands,
+    status,
   },
 });
+const sampler = createSampler({ db, servers, status, hub, log: app.log });
+app.services.sampler = sampler;
 
 let shuttingDown = false;
 async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
+  sampler.stop();
   manager.closeAll();
   try {
     await app.close();
@@ -60,3 +68,4 @@ try {
   console.error(err);
   process.exit(1);
 }
+sampler.start();
