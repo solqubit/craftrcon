@@ -22,7 +22,7 @@ function fakeTime(start = Date.parse('2026-03-10T12:00:00')) {
 }
 
 async function setup(t, { time = fakeTime(), fakeOptions = {} } = {}) {
-  const fake = await startFakeMinecraft({ password: 'goodpw', ...fakeOptions });
+  const fake = await startFakeMinecraft({ password: 'goodpw', strict: true, ...fakeOptions });
   t.after(() => fake.close());
   const ctx = await makeApp({ schedulerOptions: { now: time.now, sleep: time.sleep } });
   t.after(async () => {

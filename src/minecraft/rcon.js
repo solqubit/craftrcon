@@ -12,6 +12,7 @@ const AUTH_FAILED_ID = -1;
 const MAX_PACKET_LENGTH = 65_536; // vanilla never sends more than ~4 KiB
 const MAX_REQUEST_ID = 2 ** 31 - 2; // leaves room for the sentinel id + 1
 const KEEPALIVE_DELAY_MS = 30_000;
+const SENTINEL_GRACE_MS = 250;
 
 const SOCKET_ERROR_CODES = {
   ECONNREFUSED: 'ECONNREFUSED',
@@ -53,25 +54,41 @@ function encodePacket(id, type, body = '') {
 // 'close' is emitted once for every connection that finished authenticating
 // and then ended (close(), peer disconnect, socket error, command TIMEOUT).
 // A connect() that fails never emits 'close'; its promise rejects instead.
+//
+// Framing rule: every packet goes out in its own socket write, and the client
+// never has two packets unanswered. Vanilla's RCON reader (used unchanged by
+// Paper, Spigot, Purpur, Fabric and Forge) treats each read as exactly one
+// packet and closes the connection when the length field does not match the
+// bytes read, so two packets in one TCP segment break the connection.
 export class RconClient extends EventEmitter {
   #host;
   #port;
   #password;
   #timeoutMs;
   #keepAlive;
+  #sentinelGraceMs;
   #conn = null; // current connection, authenticated or not
   #connecting = null; // promise of the connect() in progress
   #pending = null; // the single in-flight exec
   #nextId = 1;
 
   // keepAlive: enable TCP keepalive so a silently dead peer is noticed.
-  constructor({ host, port, password, timeoutMs = 5000, keepAlive = false }) {
+  // sentinelGraceMs: see exec(); a lower bound, raised to twice the auth round trip.
+  constructor({
+    host,
+    port,
+    password,
+    timeoutMs = 5000,
+    keepAlive = false,
+    sentinelGraceMs = SENTINEL_GRACE_MS,
+  }) {
     super();
     this.#host = host;
     this.#port = port;
     this.#password = password;
     this.#timeoutMs = timeoutMs;
     this.#keepAlive = keepAlive;
+    this.#sentinelGraceMs = sentinelGraceMs;
   }
 
   // Request ids are positive int32, incrementing; a command uses id and id + 1.
@@ -100,6 +117,9 @@ export class RconClient extends EventEmitter {
         rejectConnect: reject,
         rawError: null,
         error: null,
+        authSentAt: 0,
+        roundTripMs: 0, // auth request -> auth response
+        echoesSentinel: false, // the server answered a sentinel on this connection
       };
       this.#conn = conn;
       conn.timer = setTimeout(
@@ -107,6 +127,8 @@ export class RconClient extends EventEmitter {
         this.#timeoutMs,
       );
       socket.on('connect', () => {
+        // The auth packet is the only thing written until the server answers it.
+        conn.authSentAt = Date.now();
         socket.write(encodePacket(conn.authId, TYPE_AUTH, this.#password));
       });
       socket.on('data', (chunk) => this.#onData(conn, chunk, resolve));
@@ -125,30 +147,58 @@ export class RconClient extends EventEmitter {
     return tracked;
   }
 
-  // Runs one command and resolves with the complete response text. After the
-  // command (type 2, id N) an empty type-0 sentinel (id N + 1) is sent; the
-  // server answers in order, so every body with id N seen before id N + 1
-  // belongs to the response. Bodies are kept as bytes and decoded once at the
-  // end, so a multi-byte character split between packets stays intact.
+  // Runs one command and resolves with the complete response text.
+  //
+  // The command (type 2, id N) is written alone. When the first response packet
+  // for id N arrives, an empty type-0 sentinel (id N + 1) is written, again
+  // alone. Vanilla handles one packet at a time and writes every 4096-byte
+  // fragment of a response before it reads the next packet, so its answer to
+  // the sentinel ("Unknown request 0", type 0, id N + 1) comes after the last
+  // fragment and marks the end of the response.
+  //
+  // Some servers never answer the sentinel. Until a sentinel answer has been
+  // seen on the connection, the response is also considered complete when no
+  // packet has arrived for a grace period (sentinelGraceMs, at least twice the
+  // auth round trip) after the last fragment. Once the server has answered a
+  // sentinel, only that answer (or the command timeout) ends a response.
+  //
+  // Bodies are kept as bytes and decoded once at the end, so a multi-byte
+  // character split between fragments stays intact.
   async exec(cmd) {
     const conn = this.#conn;
     if (!conn?.ready) throw new RconError('CLOSED', 'Not connected');
     if (this.#pending) throw new Error('Concurrent exec on one RconClient is not supported');
     return new Promise((resolve, reject) => {
       const id = this.#allocId();
-      const pending = { conn, id, sentinel: id + 1, chunks: [], resolve, reject, timer: null };
+      const pending = {
+        conn,
+        id,
+        sentinel: id + 1,
+        sentinelSent: false,
+        chunks: [],
+        resolve,
+        reject,
+        timer: null,
+        graceTimer: null,
+      };
       pending.timer = setTimeout(() => {
         // The stream state is unknown now: drop the connection so the next
         // caller reconnects cleanly.
+        clearTimeout(pending.graceTimer);
         this.#pending = null;
         reject(new RconError('TIMEOUT', 'Command timed out'));
         this.#teardown(conn);
       }, this.#timeoutMs);
       this.#pending = pending;
-      conn.socket.write(
-        Buffer.concat([encodePacket(id, TYPE_EXEC, cmd), encodePacket(id + 1, TYPE_RESPONSE_VALUE)]),
-      );
+      conn.socket.write(encodePacket(id, TYPE_EXEC, cmd));
     });
+  }
+
+  #finish(pending) {
+    clearTimeout(pending.timer);
+    clearTimeout(pending.graceTimer);
+    this.#pending = null;
+    pending.resolve(Buffer.concat(pending.chunks).toString('utf8'));
   }
 
   close() {
@@ -182,6 +232,7 @@ export class RconClient extends EventEmitter {
         this.#teardown(conn, new RconError('AUTH_FAILED', 'Authentication failed'));
       } else if (id === conn.authId) {
         clearTimeout(conn.timer);
+        conn.roundTripMs = Date.now() - conn.authSentAt;
         conn.ready = true;
         conn.rejectConnect = null;
         resolveConnect();
@@ -190,13 +241,25 @@ export class RconClient extends EventEmitter {
     }
     const pending = this.#pending;
     if (!pending || pending.conn !== conn) return;
-    if (id === pending.sentinel) {
-      clearTimeout(pending.timer);
-      this.#pending = null;
-      pending.resolve(Buffer.concat(pending.chunks).toString('utf8'));
+    if (id === pending.sentinel && pending.sentinelSent) {
+      conn.echoesSentinel = true;
+      this.#finish(pending);
     } else if (id === pending.id && type === TYPE_RESPONSE_VALUE) {
       // Copy: the read buffer is re-sliced and must not be retained.
       pending.chunks.push(Buffer.from(body));
+      if (!pending.sentinelSent) {
+        pending.sentinelSent = true;
+        conn.socket.write(encodePacket(pending.sentinel, TYPE_RESPONSE_VALUE));
+      }
+      if (!conn.echoesSentinel) {
+        clearTimeout(pending.graceTimer);
+        pending.graceTimer = setTimeout(
+          () => {
+            if (this.#pending === pending) this.#finish(pending);
+          },
+          Math.max(this.#sentinelGraceMs, 2 * conn.roundTripMs),
+        );
+      }
     }
   }
 
@@ -217,6 +280,7 @@ export class RconClient extends EventEmitter {
     const pending = this.#pending;
     if (pending && pending.conn === conn) {
       clearTimeout(pending.timer);
+      clearTimeout(pending.graceTimer);
       this.#pending = null;
       pending.reject(
         new RconError('CLOSED', conn.rawError?.message ?? 'Connection closed', {

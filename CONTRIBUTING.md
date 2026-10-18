@@ -97,3 +97,17 @@ Translate `README.md` as `README.<lang>.md` and link it from the language line a
   The CI runs both on all four distributions, plus `shellcheck` and the panel tests on Node 22.13 and 24.
 - If you change a dependency, run `npm run vendor`: the CI checks that `public/vendor/` matches the
   lockfile.
+- If you touch the RCON client (`src/minecraft/rcon.js`), keep its tests green against the strict fake
+  (`startFakeMinecraft({ strict: true })`, also used by `npm run fake-mc`). It reads like vanilla: one
+  packet per read, or it closes the connection. Then smoke-test against a real server. This is optional
+  and manual, because the server image downloads Minecraft, and `EULA=TRUE` means **you** accept
+  [Mojang's EULA](https://aka.ms/MinecraftEULA):
+
+  ```bash
+  docker run -d --rm --name mc-smoke -p 25575:25575 \
+    -e EULA=TRUE -e TYPE=VANILLA -e RCON_PASSWORD=smoketest itzg/minecraft-server
+  # wait for "RCON running" in `docker logs -f mc-smoke`, then add 127.0.0.1:25575 (password
+  # "smoketest") in the panel: "Test connection", the console (`list`, and `help`, a long response
+  # that may arrive in several packets) and the Players page must work. Repeat with -e TYPE=PAPER.
+  docker stop mc-smoke
+  ```

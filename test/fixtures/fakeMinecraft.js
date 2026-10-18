@@ -8,6 +8,11 @@ const TYPE_EXEC = 2;
 const TYPE_AUTH = 3;
 const MAX_PACKET_LENGTH = 4096;
 const SPLIT_BYTES = 100;
+// Vanilla (net.minecraft.server.rcon.thread.RconClient) reads into a 1460-byte
+// buffer, treats each read as exactly one packet and sends responses in
+// 4096-byte body fragments.
+const VANILLA_READ_BYTES = 1460;
+const VANILLA_FRAGMENT_BYTES = 4096;
 const HOST = '127.0.0.1';
 
 const UNKNOWN_COMMAND = 'Unknown or incomplete command, see below for error';
@@ -81,18 +86,32 @@ function slpFrame(packetId, payload) {
   return Buffer.concat([encodeVarInt(inner.length), inner]);
 }
 
+// Options:
+//   split: cut response bodies every 100 bytes (even mid UTF-8 character).
+//   strict: behave like vanilla's RCON reader. Every 'data' chunk must be exactly
+//     one complete packet whose length field equals chunk.length - 4 (at most
+//     1460 bytes); anything else closes the connection, as vanilla does. The
+//     end-of-response sentinel (type 0) is answered like vanilla: "Unknown
+//     request 0", type 0, same id. Long bodies go out in 4096-byte fragments.
+//   ignoreSentinel (strict only): never answer type-0 packets, like a server
+//     that drops unknown request types.
+// `violations` counts connections closed by the strict framing check.
 export async function startFakeMinecraft({
   password = 'test',
   rconPort = 0,
   gamePort = 0,
   handlers = {},
   split = false,
+  strict = false,
+  ignoreSentinel = false,
 } = {}) {
   const received = [];
   const sockets = new Set();
   const table = { ...DEFAULT_HANDLERS, ...handlers };
+  const stats = { violations: 0 };
   let online = false;
   let closed = false;
+  const fragmentBytes = split ? SPLIT_BYTES : strict ? VANILLA_FRAGMENT_BYTES : Infinity;
 
   async function runCommand(body) {
     const text = body.trim();
@@ -107,13 +126,13 @@ export async function startFakeMinecraft({
   function sendResponse(socket, id, body) {
     if (socket.destroyed) return;
     const bytes = Buffer.from(body, 'utf8');
-    if (!split || bytes.length <= SPLIT_BYTES) {
+    if (bytes.length <= fragmentBytes) {
       socket.write(encodePacket(id, TYPE_RESPONSE_VALUE, bytes));
       return;
     }
     // Cut raw bytes, so a multi-byte UTF-8 character may straddle two packets.
-    for (let at = 0; at < bytes.length; at += SPLIT_BYTES) {
-      socket.write(encodePacket(id, TYPE_RESPONSE_VALUE, bytes.subarray(at, at + SPLIT_BYTES)));
+    for (let at = 0; at < bytes.length; at += fragmentBytes) {
+      socket.write(encodePacket(id, TYPE_RESPONSE_VALUE, bytes.subarray(at, at + fragmentBytes)));
     }
   }
 
@@ -132,9 +151,10 @@ export async function startFakeMinecraft({
       received.push(body);
       sendResponse(socket, id, await runCommand(body));
     } else if (type === TYPE_RESPONSE_VALUE) {
-      // End-of-response sentinel. Vanilla replies "Unknown request 0"; we echo the
-      // same id with an EMPTY body so clients can match on the id alone.
-      sendResponse(socket, id, '');
+      // End-of-response sentinel. Vanilla replies "Unknown request 0" with the
+      // same id (strict mode); the lenient mode echoes an EMPTY body.
+      if (strict && ignoreSentinel) return;
+      sendResponse(socket, id, strict ? 'Unknown request 0' : '');
     } else {
       sendResponse(socket, id, `Unknown request ${type.toString(16)}`);
     }
@@ -149,7 +169,26 @@ export async function startFakeMinecraft({
     // Packets run one at a time per connection, so replies keep request order
     // even when a handler is async.
     let chain = Promise.resolve();
+    const run = (id, type, body) => {
+      chain = chain
+        .then(() => handleRconPacket(socket, state, id, type, body))
+        .catch(() => socket.destroy());
+    };
     socket.on('data', (chunk) => {
+      if (strict) {
+        // One read = one packet, like vanilla: no buffering across chunks.
+        if (
+          chunk.length < 14 ||
+          chunk.length > VANILLA_READ_BYTES ||
+          chunk.readInt32LE(0) !== chunk.length - 4
+        ) {
+          stats.violations += 1;
+          socket.destroy();
+          return;
+        }
+        run(chunk.readInt32LE(4), chunk.readInt32LE(8), chunk.toString('utf8', 12, chunk.length - 2));
+        return;
+      }
       buf = Buffer.concat([buf, chunk]);
       while (buf.length >= 4) {
         const length = buf.readInt32LE(0);
@@ -162,9 +201,7 @@ export async function startFakeMinecraft({
         const type = buf.readInt32LE(8);
         const body = buf.toString('utf8', 12, 4 + length - 2);
         buf = buf.subarray(4 + length);
-        chain = chain
-          .then(() => handleRconPacket(socket, state, id, type, body))
-          .catch(() => socket.destroy());
+        run(id, type, body);
       }
     });
   }
@@ -245,6 +282,7 @@ export async function startFakeMinecraft({
     rconPort: ports.rcon,
     gamePort: ports.game,
     received,
+    stats,
     dropConnections,
     // Offline: stop listening (new connections are refused) and drop open ones,
     // like a server shutting down. Online: listen again on the same ports.

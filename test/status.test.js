@@ -9,7 +9,7 @@ const HOUR = 3600e3;
 const DAY = 24 * HOUR;
 
 async function setup(t, fakeOptions = {}) {
-  const fake = await startFakeMinecraft({ password: 'goodpw', ...fakeOptions });
+  const fake = await startFakeMinecraft({ password: 'goodpw', strict: true, ...fakeOptions });
   t.after(() => fake.close());
   const ctx = await makeApp();
   t.after(async () => {
@@ -152,7 +152,7 @@ test('an offline server answers 200 with an offline status, quickly', async (t) 
 
 test('GET /api/servers/status maps every server id to { online, players }', async (t) => {
   const { call, id } = await setup(t);
-  const second = await startFakeMinecraft({ password: 'goodpw' });
+  const second = await startFakeMinecraft({ password: 'goodpw', strict: true });
   t.after(() => second.close());
   const other = await call('POST', '/api/servers', {
     name: 'Creative',
@@ -184,7 +184,7 @@ test('status routes: 404 for an unknown server, 400 for a bad id, session requir
 
 test('tick stores one sample per online server and drops samples older than the retention', async (t) => {
   const { db, services, id, call } = await setup(t);
-  const offline = await startFakeMinecraft({ password: 'goodpw' });
+  const offline = await startFakeMinecraft({ password: 'goodpw', strict: true });
   t.after(() => offline.close());
   const down = await call('POST', '/api/servers', {
     name: 'Down',

@@ -128,7 +128,7 @@ test('PUT without password keeps the old one, with a new one replaces it', async
 
 test('PUT cannot point the saved password at another host or port', async (t) => {
   const { call, services } = await setup(t);
-  const saved = await startFakeMinecraft({ password: 'goodpw' });
+  const saved = await startFakeMinecraft({ password: 'goodpw', strict: true });
   t.after(() => saved.close());
   const { id } = (
     await call('POST', '/api/servers', valid({ host: '127.0.0.1', rconPort: saved.rconPort, password: 'goodpw' }))
@@ -297,7 +297,7 @@ test('unknown ids answer 404 and malformed ids answer 400', async (t) => {
 
 test('connection test succeeds against the fake server', async (t) => {
   const { call } = await setup(t);
-  const fake = await startFakeMinecraft({ password: 'goodpw' });
+  const fake = await startFakeMinecraft({ password: 'goodpw', strict: true });
   t.after(() => fake.close());
   const res = await call('POST', '/api/servers/test', { host: '127.0.0.1', rconPort: fake.rconPort, password: 'goodpw' });
   assert.equal(res.statusCode, 200);
@@ -309,7 +309,7 @@ test('connection test succeeds against the fake server', async (t) => {
 
 test('connection test reports the RconError code', async (t) => {
   const { call } = await setup(t);
-  const fake = await startFakeMinecraft({ password: 'goodpw' });
+  const fake = await startFakeMinecraft({ password: 'goodpw', strict: true });
   t.after(() => fake.close());
 
   const badAuth = await call('POST', '/api/servers/test', { host: '127.0.0.1', rconPort: fake.rconPort, password: 'wrong' });
@@ -322,7 +322,7 @@ test('connection test reports the RconError code', async (t) => {
 
 test('connection test falls back to the stored password when given an id', async (t) => {
   const { call } = await setup(t);
-  const fake = await startFakeMinecraft({ password: 'goodpw' });
+  const fake = await startFakeMinecraft({ password: 'goodpw', strict: true });
   t.after(() => fake.close());
   const { id } = (
     await call('POST', '/api/servers', valid({ host: '127.0.0.1', rconPort: fake.rconPort, password: 'goodpw' }))
@@ -354,7 +354,7 @@ test('connection test validates its input and never touches the shared manager',
 
 test('the stored password is never sent to a host or port other than the saved one', async (t) => {
   const { call } = await setup(t);
-  const saved = await startFakeMinecraft({ password: 'goodpw' });
+  const saved = await startFakeMinecraft({ password: 'goodpw', strict: true });
   t.after(() => saved.close());
   const { id } = (
     await call('POST', '/api/servers', valid({ host: '127.0.0.1', rconPort: saved.rconPort, password: 'goodpw' }))
@@ -411,7 +411,7 @@ test('connection test applies the same length caps as create', async (t) => {
 
 test('connection test with the stored password connects to the saved address', async (t) => {
   const { call } = await setup(t);
-  const saved = await startFakeMinecraft({ password: 'goodpw' });
+  const saved = await startFakeMinecraft({ password: 'goodpw', strict: true });
   t.after(() => saved.close());
   const { id } = (
     await call('POST', '/api/servers', valid({ host: 'localhost', rconPort: saved.rconPort, password: 'goodpw' }))

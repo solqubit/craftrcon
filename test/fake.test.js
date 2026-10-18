@@ -167,6 +167,69 @@ test('empty type-0 sentinel is echoed with the same id and an empty body, in ord
   assert.deepEqual(fake.received, ['slow']);
 });
 
+// --- strict (vanilla-like) mode ---
+
+test('strict: a command and its sentinel in one write close the connection, like vanilla', async (t) => {
+  // This is how the RCON client used to send every command (review finding C1).
+  const { fake, open } = await setup(t, { strict: true });
+  const c = await open();
+  c.socket.write(Buffer.concat([pkt(2, EXEC, 'list'), pkt(3, VALUE)]));
+  await assert.rejects(c.next(), /socket closed/);
+  assert.deepEqual(fake.received, []);
+  assert.equal(fake.stats.violations, 1);
+});
+
+test('strict: a packet cut across two writes closes the connection', async (t) => {
+  const { fake, open } = await setup(t, { strict: true });
+  const c = await open();
+  const wire = pkt(2, EXEC, 'list');
+  c.socket.write(wire.subarray(0, 6));
+  await new Promise((r) => setTimeout(r, 20));
+  c.socket.write(wire.subarray(6));
+  await assert.rejects(c.next(), /socket closed/);
+  assert.deepEqual(fake.received, []);
+  assert.equal(fake.stats.violations, 1);
+});
+
+test('strict: one packet per write works; the sentinel gets "Unknown request 0" with its id', async (t) => {
+  const { fake, open } = await setup(t, { strict: true });
+  const c = await open();
+  c.send(2, EXEC, 'list');
+  const res = await c.next();
+  assert.deepEqual([res.id, res.type], [2, VALUE]);
+  assert.match(res.body, /players online/);
+  c.send(3, VALUE, '');
+  const end = await c.next();
+  assert.deepEqual([end.id, end.type, end.body], [3, VALUE, 'Unknown request 0']);
+  assert.deepEqual(fake.received, ['list']);
+  assert.equal(fake.stats.violations, 0);
+});
+
+test('strict: long bodies go out in 4096-byte fragments', async (t) => {
+  const body = 'x'.repeat(4096 * 2 + 10);
+  const { open } = await setup(t, { strict: true, handlers: { big: () => body } });
+  const c = await open();
+  c.send(2, EXEC, 'big');
+  const sizes = [];
+  for (let i = 0; i < 3; i++) {
+    const p = await c.next();
+    assert.deepEqual([p.id, p.type], [2, VALUE]);
+    sizes.push(p.bytes.length);
+  }
+  assert.deepEqual(sizes, [4096, 4096, 10]);
+});
+
+test('strict + ignoreSentinel: type-0 packets get no answer', async (t) => {
+  const { open } = await setup(t, { strict: true, ignoreSentinel: true });
+  const c = await open();
+  c.send(2, EXEC, 'list');
+  assert.equal((await c.next()).id, 2);
+  c.send(3, VALUE, '');
+  await new Promise((r) => setTimeout(r, 20));
+  c.send(4, EXEC, 'banlist');
+  assert.equal((await c.next()).id, 4); // nothing for id 3 came first
+});
+
 test('parses packets coalesced in one chunk and fragmented byte by byte', async (t) => {
   const { fake, open } = await setup(t);
   const c = await open();

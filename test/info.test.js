@@ -9,7 +9,7 @@ const GLUED_BANS =
 const UNKNOWN_RULE = 'Incorrect argument for command at position 9: gamerule <--[HERE]';
 
 async function setup(t, fakeOptions = {}) {
-  const fake = await startFakeMinecraft({ password: 'goodpw', ...fakeOptions });
+  const fake = await startFakeMinecraft({ password: 'goodpw', strict: true, ...fakeOptions });
   t.after(() => fake.close());
   const ctx = await makeApp();
   t.after(async () => {

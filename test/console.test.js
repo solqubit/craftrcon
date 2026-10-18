@@ -5,7 +5,7 @@ import { startFakeMinecraft } from './fixtures/fakeMinecraft.js';
 import { createHub } from '../src/services/hub.js';
 
 async function setup(t, fakeOptions = {}) {
-  const fake = await startFakeMinecraft({ password: 'goodpw', ...fakeOptions });
+  const fake = await startFakeMinecraft({ password: 'goodpw', strict: true, ...fakeOptions });
   t.after(() => fake.close());
   const ctx = await makeApp();
   t.after(async () => {
@@ -216,7 +216,7 @@ test('a live client receives the console entry of a command', async (t) => {
 
 test('a live client only receives messages of its own server', async (t) => {
   const ctx = await setup(t);
-  const otherFake = await startFakeMinecraft({ password: 'goodpw' });
+  const otherFake = await startFakeMinecraft({ password: 'goodpw', strict: true });
   t.after(() => otherFake.close());
   const other = (
     await ctx.call('POST', '/api/servers', {
