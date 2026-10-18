@@ -339,21 +339,24 @@ prune_backups() {
 
 # restore_db: puts the backed-up database files back (the panel is stopped). Returns 2 when
 # the backup has no database, 3 when the database folder is on another filesystem (a
-# rename could not be used). Copies are staged inside the root-only backup folder and
-# renamed into place: a rename replaces whatever was planted at that name, it never
-# follows a link. A -wal or -shm the new version left is removed (SQLite would apply it to
-# the old database).
+# rename could not be used). Copies are staged inside the root-only backup folder, given
+# to the service user there, and renamed into place: a rename replaces whatever was
+# planted at that name, it never follows a link. Nothing touches the name after the
+# rename, since a surviving process of the service user could already have swapped it
+# for a (hard) link to a root file. A -wal or -shm the new version left is removed
+# (SQLite would apply it to the old database).
 restore_db() {
-  local _f
+  local _f _stage
   [ -f "$BACKUP_DIR/craftrcon.db" ] || return 2
   [ "$(stat -c %d -- "$BACKUP_DIR")" = "$(stat -c %d -- "$DB_DIR")" ] || return 3
   rm -f "$DB_DIR/craftrcon.db-wal" "$DB_DIR/craftrcon.db-shm" || return 1
   for _f in "${DB_FILES[@]}"; do
     [ -f "$BACKUP_DIR/$_f" ] || continue
-    cp -p "$BACKUP_DIR/$_f" "$BACKUP_DIR/.restore-$_f" || return 1
+    _stage="$BACKUP_DIR/.restore-$_f"
+    cp -p "$BACKUP_DIR/$_f" "$_stage" || return 1
+    chown -h "$SVC_USER:$SVC_USER" "$_stage" || return 1
     rm -f "$DB_DIR/$_f" || return 1 # (a link, if planted, goes; its target is untouched)
-    mv -fT "$BACKUP_DIR/.restore-$_f" "$DB_DIR/$_f" || return 1
-    chown -h "$SVC_USER:$SVC_USER" "$DB_DIR/$_f" || return 1
+    mv -fT "$_stage" "$DB_DIR/$_f" || return 1
   done
 }
 

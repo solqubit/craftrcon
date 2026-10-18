@@ -305,9 +305,18 @@ rm -f "$TMP/victim"
 # Restores are staged inside the (root-only) backup and renamed into the data folder.
 mkdir -p "$TMP/stage-bk" "$TMP/stage-db"
 echo db >"$TMP/stage-bk/craftrcon.db"
-out="$(fl "BACKUP_DIR='$TMP/stage-bk'; DB_DIR='$TMP/stage-db'; chown() { :; }; mv() { echo \"MV \$*\"; command mv \"\$@\"; }; restore_db")"
-assert_eq "MV -fT $TMP/stage-bk/.restore-craftrcon.db $TMP/stage-db/craftrcon.db" "$out" "restore_db stages in the backup folder and renames into place"
+out="$(fl "BACKUP_DIR='$TMP/stage-bk'; DB_DIR='$TMP/stage-db'; chown() { echo \"CHOWN \$*\"; }; mv() { echo \"MV \$*\"; command mv \"\$@\"; }; restore_db")"
+# (review C2b) the owner is set on the staged copy before the rename, never on the name
+# in the data folder after it: the rename is the last operation on that path.
+assert_eq "CHOWN -h craftrcon:craftrcon $TMP/stage-bk/.restore-craftrcon.db|MV -fT $TMP/stage-bk/.restore-craftrcon.db $TMP/stage-db/craftrcon.db" "$(printf '%s' "$out" | tr '
+' '|')" "restore_db: chown -h on the staged copy, then the rename, nothing after it"
 assert_eq "db" "$(cat "$TMP/stage-db/craftrcon.db")" "restore_db puts the file in place"
+if [ "$(id -u)" -eq 0 ] && id daemon >/dev/null 2>&1; then
+  printf 'db2' >"$TMP/stage-bk/craftrcon.db" && printf 'wal2' >"$TMP/stage-bk/craftrcon.db-wal"
+  chown root:root "$TMP/stage-bk/craftrcon.db" "$TMP/stage-bk/craftrcon.db-wal"
+  fl "BACKUP_DIR='$TMP/stage-bk'; DB_DIR='$TMP/stage-db'; SVC_USER=daemon; restore_db" >/dev/null 2>&1
+  assert_eq "daemon:daemon|daemon:daemon|db2|absent" "$(stat -c %U:%G "$TMP/stage-db/craftrcon.db")|$(stat -c %U:%G "$TMP/stage-db/craftrcon.db-wal")|$(cat "$TMP/stage-db/craftrcon.db")|$(find "$TMP/stage-bk" -name '.restore-*' | grep -q . && echo left || echo absent)" "restore_db (root): restored files belong to the service user, no staged copy left"
+fi
 if [ "$CAN_SYMLINK" = 1 ]; then
   mk_sandbox
   mkdir -p "$TMP/victim"
