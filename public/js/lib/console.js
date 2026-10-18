@@ -86,6 +86,9 @@ export function addLive(entries, entry) {
   return [...entries, settled({}, entry)];
 }
 
+// Server replies only use '§' codes: an '&' in them is literal text.
+const plainReply = (output) => stripCodes(output ?? '', { ampersand: false });
+
 export const splitOutput = (output) => String(output ?? '').replace(/\n+$/, '').split('\n');
 
 // Lines an entry draws below its command line.
@@ -114,14 +117,14 @@ const ERROR_OUTPUT =
   /^(Unknown or incomplete command|Unknown (item|block|entity|effect|enchantment|function|advancement|recipe|objective|team|biome|structure|dimension|sound|particle|attribute|bossbar|criterion)|Incorrect argument|Invalid |Expected |No (player|entity|targets?|entities) (was |were )?found|Could not |Can't |Cannot |That player does not exist|Only one (player|entity))/i;
 
 export function isErrorOutput(output) {
-  return ERROR_OUTPUT.test(stripCodes(output ?? '').trim());
+  return ERROR_OUTPUT.test(plainReply(output).trim());
 }
 
 // Case-insensitive search in the command and the output (without color codes).
 export function matchesFilter(entry, query) {
   const q = String(query ?? '').trim().toLowerCase();
   if (q === '') return true;
-  const haystack = `${entry.command}\n${stripCodes(entry.output ?? '')}`.toLowerCase();
+  const haystack = `${entry.command}\n${plainReply(entry.output)}`.toLowerCase();
   return haystack.includes(q);
 }
 
@@ -164,7 +167,7 @@ export function formatExport(entries, errorText) {
     lines.push(`${at} > ${entry.command}${from}`);
     if (entry.pending) continue;
     if (!entry.ok) lines.push(`${at} ${errorText(entry)}`);
-    else if (entry.output) for (const line of splitOutput(entry.output)) lines.push(`${at} ${stripCodes(line)}`);
+    else if (entry.output) for (const line of splitOutput(entry.output)) lines.push(`${at} ${plainReply(line)}`);
   }
   return lines.length ? `${lines.join('\n')}\n` : '';
 }

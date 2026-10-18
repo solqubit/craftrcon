@@ -130,6 +130,15 @@ test('matchesFilter looks at the command and the output without color codes', ()
   assert.equal(matchesFilter(entry, 'list'), false);
 });
 
+test("server replies only use §: an '&' stays literal in the filter, the export and error detection", () => {
+  const entry = { ts: TS, origin: 'console', command: 'say hi', ok: true, output: 'Tom &aJerry §7R&D', error: null };
+  assert.equal(matchesFilter(entry, '&aJerry'), true);
+  assert.equal(matchesFilter(entry, 'R&D'), true);
+  assert.equal(formatExport([entry], () => ''), '[2026-10-17 09:05:07] > say hi\n[2026-10-17 09:05:07] Tom &aJerry R&D\n');
+  assert.equal(isErrorOutput('&cUnknown thing'), false);
+  assert.equal(isErrorOutput('§cUnknown or incomplete command'), true);
+});
+
 test('formatTime is HH:MM:SS in local time', () => {
   assert.equal(formatTime(TS), '09:05:07');
 });

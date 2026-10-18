@@ -14,12 +14,17 @@ export const SELECTORS = ['@a', '@p', '@r', '@s', '@e'];
 const PLAYER_ARGS = new Set(['player', 'target', 'targets', 'destination']);
 
 const GAME_MODES = ['survival', 'creative', 'adventure', 'spectator'];
-// Fixed values of other syntax arguments, by argument name.
+// Fixed values of other syntax arguments, by argument name. A function gets
+// the word before the argument (e.g. the subcommand) and returns the values.
+const TIME_VALUES = { set: ['day', 'night', 'noon', 'midnight'], query: ['daytime', 'gametime', 'day'] };
 const VALUES = {
   mode: GAME_MODES,
   gamemode: GAME_MODES,
   difficulty: ['peaceful', 'easy', 'normal', 'hard'],
-  time: ['day', 'night', 'noon', 'midnight'],
+  time: (previous) => {
+    const sub = previous.toLowerCase();
+    return Object.hasOwn(TIME_VALUES, sub) ? TIME_VALUES[sub] : [];
+  },
 };
 
 // "<mode>" -> { name: 'mode' }; "(a|b)" or "[a|b]" -> { choices: ['a', 'b'] }.
@@ -68,7 +73,7 @@ function gameruleNames(token) {
   return out;
 }
 
-function argumentSuggestions(arg, token, players) {
+function argumentSuggestions(arg, token, players, previous) {
   if (arg.choices) return plain(arg.choices.filter((c) => startsWith(c, token)));
   if (PLAYER_ARGS.has(arg.name)) {
     const names = players.filter((p) => typeof p === 'string' && startsWith(p, token)).slice(0, MAX_SUGGESTIONS);
@@ -79,8 +84,9 @@ function argumentSuggestions(arg, token, players) {
     ];
   }
   if (arg.name === 'rule') return plain(gameruleNames(token).slice(0, MAX_SUGGESTIONS));
-  const values = VALUES[arg.name];
-  return values ? plain(values.filter((v) => startsWith(v, token))) : [];
+  const known = VALUES[arg.name];
+  const values = typeof known === 'function' ? known(previous) : (known ?? []);
+  return plain(values.filter((v) => startsWith(v, token)));
 }
 
 // Suggestions for the word at the end of `input`:
@@ -95,7 +101,7 @@ export function suggest(input, { commands = COMMANDS, players = [] } = {}) {
   const args = command.syntax.split(' ').slice(1);
   const index = parts.length - 2;
   if (index >= args.length) return [];
-  return argumentSuggestions(parseArg(args[index]), token, players);
+  return argumentSuggestions(parseArg(args[index]), token, players, parts[parts.length - 2]);
 }
 
 // The input after accepting `suggestion`: the word being typed is replaced

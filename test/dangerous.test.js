@@ -34,6 +34,23 @@ test('case, a leading slash and extra spaces do not dodge the check', () => {
   assert.equal(isDangerous('Whitelist\tOFF', list), true);
 });
 
+// The API strips one '/', and vanilla's dispatcher accepts one more: "//stop"
+// reaches RCON as "/stop" and still stops the server.
+test('several leading slashes do not dodge the check', () => {
+  assert.equal(isDangerous('//stop', list), true);
+  assert.equal(isDangerous('/ /op Steve', list), true);
+  assert.equal(isDangerous('// KILL @e', list), true);
+  assert.equal(isDangerous('///whitelist off', list), true);
+});
+
+test('a minecraft: namespace on the command name does not dodge the check', () => {
+  assert.equal(isDangerous('minecraft:stop', list), true);
+  assert.equal(isDangerous('/minecraft:op Steve', list), true);
+  assert.equal(isDangerous('//Minecraft:Kill @e', list), true);
+  assert.equal(isDangerous('minecraft:stopsound @a', list), false);
+  assert.equal(isDangerous('say minecraft:stop', list), false);
+});
+
 test('entries are normalized the same way', () => {
   assert.equal(isDangerous('ban Steve', [' /BAN ']), true);
   assert.equal(isDangerous('kill @e', ['kill  @e']), true);

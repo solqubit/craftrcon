@@ -4,7 +4,8 @@
 // Arguments named player / target / targets / destination complete online
 // players and selectors; see lib/autocomplete.js for the other completers.
 // Each description lives in locales/<lang>.json under cmd.<name>.
-// Aliases (xp, tp, tell, w, tm) are entries of their own.
+// Aliases (xp, tp, tell, w, tm) are entries of their own, and so are commands
+// later replaced (locatebiome, replaceitem: 1.16–1.17 servers still use them).
 const SYNTAX = [
   'advancement (grant|revoke) <targets> (everything|only|from|through|until) [advancement]',
   'attribute <target> <attribute> (get|base|modifier)',
@@ -39,6 +40,7 @@ const SYNTAX = [
   'kill [targets]',
   'list [uuids]',
   'locate (biome|poi|structure) <name>',
+  'locatebiome <biome>',
   'loot (give|insert|replace|spawn) <target> (fish|kill|loot|mine)',
   'me <action>',
   'msg <targets> <message>',
@@ -53,6 +55,7 @@ const SYNTAX = [
   'random (value|roll|reset) <range>',
   'recipe (give|take) <targets> <recipe>',
   'reload',
+  'replaceitem (block|entity) <target> <slot> <item> [count]',
   'return <value>',
   'ride <target> (mount|dismount) [vehicle]',
   'save-all [flush]',

@@ -1,12 +1,17 @@
 // Which commands ask for confirmation before they are sent. Pure ES module.
 
-// Lowercase, without one leading '/', with every whitespace run as one space:
-// "  / Kill   @E " -> "kill @e". The API strips the slash the same way, so
-// none of these spellings can slip past the check.
+// Lowercase, without any leading slashes or a "minecraft:" namespace on the
+// command name, with every whitespace run as one space:
+// "  // Minecraft:Kill   @E " -> "kill @e". The API strips one '/' and vanilla's
+// dispatcher accepts another one and the namespace, so "//stop" or
+// "minecraft:stop" would still stop the server: none of them may slip past.
 function normalize(command) {
-  let s = String(command).trim();
-  if (s.startsWith('/')) s = s.slice(1).trim();
-  return s.replace(/\s+/g, ' ').toLowerCase();
+  return String(command)
+    .replace(/^[\s/]+/, '')
+    .replace(/^minecraft:/i, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
 }
 
 // True when `command` equals an entry of `list`, or starts with an entry

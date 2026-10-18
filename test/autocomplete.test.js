@@ -82,6 +82,16 @@ test('well-known values are offered for difficulty, time and gamerules', () => {
   assert.deepEqual(inserts(suggest('gamerule keep_')), ['keep_inventory']);
 });
 
+test('time values depend on the subcommand', () => {
+  assert.deepEqual(inserts(suggest('time set ')), ['day', 'night', 'noon', 'midnight']);
+  assert.deepEqual(inserts(suggest('time query ')), ['daytime', 'gametime', 'day']);
+  assert.deepEqual(inserts(suggest('time query d')), ['daytime', 'day']);
+  assert.deepEqual(inserts(suggest('time QUERY g')), ['gametime']);
+  assert.deepEqual(suggest('time add '), []);
+  assert.deepEqual(suggest('time constructor '), []); // not an inherited key
+  assert.deepEqual(suggest('time __proto__ '), []);
+});
+
 test('nothing is suggested for empty input, free text or unknown commands', () => {
   assert.deepEqual(suggest(''), []);
   assert.deepEqual(suggest('   '), []);
@@ -137,7 +147,7 @@ test('COMMANDS covers the vanilla server commands and Paper tps', () => {
     perf place playsound publish random recipe reload return ride save-all save-off save-on say schedule
     scoreboard seed setblock setidletimeout setworldspawn spawnpoint spectate spreadplayers stop stopsound
     summon tag team teammsg teleport tp tellraw tick time title tm transfer trigger weather whitelist
-    worldborder tps`.split(/\s+/);
+    worldborder tps locatebiome replaceitem`.split(/\s+/);
   const names = new Set(COMMANDS.map((c) => c.name));
   assert.deepEqual(expected.filter((n) => !names.has(n)), []);
 });
