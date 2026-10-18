@@ -3,7 +3,7 @@
 # version_cmp, detect_arch and the NODE_DIR/OPT_DIR constants).
 #
 #   node_resolve   decides what ensure_node will do (no system changes): sets NODE_ACTION
-#                  (keep|download|apk) and, for downloads, NODE_TARBALL/NODE_SHA256/NODE_URL.
+#                  (keep|download|system|apk) and, for downloads, NODE_TARBALL/NODE_SHA256/NODE_URL.
 #   ensure_node    installs Node if needed and exports NODE_BIN and NPM_BIN.
 #
 # Environment knobs (tests): NODE_DIST_URL (default https://nodejs.org/dist/latest-v24.x).
@@ -42,10 +42,17 @@ node_pick_tarball() {
 
 # node_resolve WORKDIR: no system changes; may download SHASUMS256.txt into WORKDIR.
 node_resolve() {
-  local _work="$1" _arch _pick
+  local _work="$1" _arch _pick _sys
   NODE_ACTION='' NODE_TARBALL='' NODE_SHA256='' NODE_URL=''
   if [ "${LIBC:-glibc}" = musl ]; then
-    NODE_ACTION=apk
+    # Alpine: the distro's nodejs package. apk only runs when the node on PATH (with npm)
+    # does not already satisfy NODE_MIN_VERSION.
+    _sys="$(command -v node || true)"
+    if [ -n "$_sys" ] && node_version_ok "$_sys" && command -v npm >/dev/null 2>&1; then
+      NODE_ACTION=system
+    else
+      NODE_ACTION=apk
+    fi
     return 0
   fi
   # shellcheck disable=SC2153 # NODE_DIR is defined by common.sh
@@ -85,6 +92,11 @@ ensure_node() {
       NODE_BIN="$NODE_DIR/bin/node"
       NPM_BIN="$NODE_DIR/bin/npm"
       info NODE_KEEP "$(node_version_of "$NODE_BIN")" "$NODE_DIR"
+      ;;
+    system)
+      NODE_BIN="$(command -v node)"
+      NPM_BIN="$(command -v npm)"
+      info NODE_KEEP "$(node_version_of "$NODE_BIN")" "$(dirname "$NODE_BIN")"
       ;;
     apk)
       apk add --no-cache nodejs npm

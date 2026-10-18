@@ -488,9 +488,9 @@ step_config() {
 }
 
 write_installed() {
-  installed_json "$SOURCE_VERSION" "$(source_commit)" "$INSTALLED_AT" "$PORT" "$DOMAIN" \
+  installed_json "$SOURCE_VERSION" "$(source_commit)" "$INSTALLED_AT" "" "$PORT" "$DOMAIN" \
     ${FIREWALL_OPENED[@]+"${FIREWALL_OPENED[@]}"} >"$WORK_DIR/installed.json" # (bash < 4.4: empty array + set -u)
-  install -m 0644 -o root -g root "$WORK_DIR/installed.json" "$INSTALLED_FILE"
+  write_installed_file "$WORK_DIR/installed.json"
 }
 
 step_service() {

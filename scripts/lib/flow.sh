@@ -63,19 +63,26 @@ on_error() { # on_error LINE COMMAND (ERR trap; only the main shell reports)
 
 # --------------------------------------------------------------------- json --
 
-# installed_json VERSION COMMIT INSTALLED_AT PORT DOMAIN [TOOL:PORT...]: the
-# /opt/craftrcon/installed.json document. When UPDATED_AT is set (the update flow) it
-# also gets an "updatedAt".
+# installed_json VERSION COMMIT INSTALLED_AT UPDATED_AT PORT DOMAIN [TOOL:PORT...]: the
+# /opt/craftrcon/installed.json document. COMMIT and DOMAIN may be empty (null);
+# UPDATED_AT is empty for an install (no "updatedAt" key) and set by the update flow.
 installed_json() {
   local _commit=null _domain=null _fw='' _e _updated=''
   if [ -n "$2" ]; then _commit="\"$2\""; fi
-  if [ -n "$5" ]; then _domain="\"$5\""; fi
-  if [ -n "${UPDATED_AT:-}" ]; then _updated="\n  \"updatedAt\": \"$UPDATED_AT\","; fi
-  for _e in "${@:6}"; do
+  if [ -n "$4" ]; then _updated="$(printf '\n  "updatedAt": "%s",' "$4")"; fi
+  if [ -n "$6" ]; then _domain="\"$6\""; fi
+  for _e in "${@:7}"; do
     _fw+="${_fw:+, }{ \"tool\": \"${_e%%:*}\", \"port\": ${_e#*:} }"
   done
-  printf '{\n  "version": "%s",\n  "commit": %s,\n  "installedAt": "%s",'"$_updated"'\n  "port": %s,\n  "domain": %s,\n  "firewall": [%s]\n}\n' \
-    "$1" "$_commit" "$3" "$4" "$_domain" "$_fw"
+  printf '{\n  "version": "%s",\n  "commit": %s,\n  "installedAt": "%s",%s\n  "port": %s,\n  "domain": %s,\n  "firewall": [%s]\n}\n' \
+    "$1" "$_commit" "$3" "$_updated" "$5" "$_domain" "$_fw"
+}
+
+# write_installed_file SRC: installs SRC as INSTALLED_FILE (root, 0644) atomically: a temp
+# file next to it (in the root-only OPT_DIR), then a rename.
+write_installed_file() {
+  install -m 0644 -o root -g root "$1" "$INSTALLED_FILE.tmp"
+  mv -f "$INSTALLED_FILE.tmp" "$INSTALLED_FILE"
 }
 
 # source_commit: git HEAD of the copy being installed, or nothing (no .git or no git).

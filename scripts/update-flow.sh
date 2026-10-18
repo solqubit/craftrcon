@@ -4,18 +4,23 @@
 # updates the installation in /opt/craftrcon.
 #
 # Checks (nothing changes): root, installed, versions (same: says so and exits 0; older:
-# refused), confirmation, the copy, the system and what Node.js the new version needs.
+# refused), the copy, the system, the data paths, what Node.js the new version needs, and
+# the confirmation.
 #
-# Update: stop the panel, back up the database (+ WAL), config.json and installed.json
-# (keeping the newest 5 backups), move the application aside (app.prev), copy the new one,
-# a newer Node.js only if package.json requires it, npm ci, start, and check that
-# /api/health answers with the new version. Then installed.json gets the new version.
+# Update: stop the panel, back up the database (+ WAL), config.json, installed.json and the
+# service files (keeping the newest 5 backups), move the application aside (app.prev), copy
+# the new one, a newer Node.js only if package.json requires it, npm ci, re-render the
+# service files, start, and check that /api/health answers with the new version. Then
+# installed.json gets the new version.
 #
-# From the stop on, ANY failure (a failing command, die, Ctrl-C) rolls back: stop, put
-# app.prev (and the previous Node.js) back, restore the database if the new version ran,
-# start and check the previous version; then it explains what failed and exits 1. If the
-# rollback itself fails, it prints the exact manual recovery steps.
+# From the stop on, ANY failure (a failing command, die, Ctrl-C, SIGTERM, a dropped SSH
+# session, a closed output pipe) rolls back: stop, put app.prev (and the previous Node.js
+# and service files) back, restore the database if the new version ran, start and check the
+# previous version; then it explains what failed (also in update.log in the backup folder)
+# and exits 1. If the rollback itself fails, it prints the exact manual recovery steps.
 #
+# The data folder belongs to the service user, so nothing there is trusted: symbolic links
+# are refused, never followed (backups live in a root-only folder, restores are renames).
 # It never touches config.json, secret.key, the panel password or the saved servers.
 set -Eeuo pipefail
 
@@ -46,18 +51,24 @@ KEEP_DOMAIN=''
 KEEP_INSTALLED_AT=''
 KEEP_FIREWALL=()
 LOGS_HINT=''
+DB_DIR=''           # where the database lives (config.json dataDir, else DATA_DIR)
 APP_PREV=''
 NODE_PREV=''
 BACKUP_ROOT=''
 BACKUP_DIR=''
+BACKUP_PARTIAL=''   # the backup while it is being written (a name prune never matches)
+UPDATE_LOG=''
 WORK_DIR=''
 CURRENT_STEP=''
 # Rollback state. ARMED: from the service stop until installed.json has the new version.
 ARMED=0
 BACKUP_DONE=0
-NEW_STARTED=0  # the new version may have run (and migrated the database)
-RECORDING=0    # installed.json is being rewritten
+NEW_STARTED=0      # the new version may have run (and migrated the database)
+UNITS_WRITTEN=0    # the service files were re-rendered
+PROXY_CHANGED=0    # ... and the proxy's changed (it is restarted)
+RECORDING=0        # installed.json is being rewritten
 DB_RESTORED=0
+UNITS_RESTORED=0
 INSTALLED_RESTORED=0
 
 # ------------------------------------------------------------------ options --
@@ -93,6 +104,19 @@ set_paths() {
   BACKUP_ROOT="$DATA_DIR/backups"
 }
 
+# config_data_dir: dataDir from config.json when it is an absolute path, else DATA_DIR.
+config_data_dir() {
+  local _d=''
+  if [ -r "$CONFIG_FILE" ]; then
+    _d="$(tr -d '\r\n' <"$CONFIG_FILE" | sed -n 's/.*"dataDir"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+  fi
+  _d="${_d%/}"
+  case "$_d" in
+    /?*) echo "$_d" ;;
+    *) echo "$DATA_DIR" ;;
+  esac
+}
+
 # ------------------------------------------------------------------- checks --
 
 # check_versions: sets NEW_VERSION / OLD_VERSION. Same version: says so and exits 0
@@ -125,15 +149,49 @@ confirm_update() {
   fi
 }
 
-# engines_node_min: the X.Y.Z of "engines": { "node": ">=X.Y.Z" } in the new package.json.
+# engines_node_min: the minimum Node.js X.Y.Z that "engines": { "node": ... } of the new
+# package.json asks for (">=X.Y.Z", ">=X.Y" or "^X.Y.Z"); nothing for other forms.
 engines_node_min() {
+  local _spec _re='^(>=|\^)([0-9]+\.[0-9]+)(\.[0-9]+)?'
   [ -r "$SRC_DIR/package.json" ] || return 0
-  tr -d '\r\n' <"$SRC_DIR/package.json" |
-    sed -n 's/.*"engines"[[:space:]]*:[[:space:]]*{[^}]*"node"[[:space:]]*:[[:space:]]*">=[[:space:]]*\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)".*/\1/p'
+  _spec="$(tr -d '\r\n' <"$SRC_DIR/package.json" |
+    sed -n 's/.*"engines"[[:space:]]*:[[:space:]]*{[^}]*"node"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+  _spec="${_spec//[[:space:]]/}"
+  if [[ "$_spec" =~ $_re ]]; then echo "${BASH_REMATCH[2]}${BASH_REMATCH[3]:-.0}"; fi
+}
+
+# owned_by_root PATH (the path itself, not a link target).
+owned_by_root() { [ "$(stat -c %u -- "$1" 2>/dev/null)" = 0 ]; }
+
+# safe_file PATH: a regular file, not a symbolic link.
+safe_file() { [ -f "$1" ] && [ ! -L "$1" ]; }
+
+# check_data_paths: the data folder is writable by the service user, so a compromised
+# panel could plant symbolic links there for root to follow. Refuses (dies) unless the
+# database files are plain files and the backup folder, if present, is a root-owned
+# folder. Run before any change, and again with the panel stopped.
+check_data_paths() {
+  local _f
+  if ! safe_file "$DB_DIR/craftrcon.db"; then
+    if [ -e "$DB_DIR/craftrcon.db" ] || [ -L "$DB_DIR/craftrcon.db" ]; then
+      die ERR_UPDATE_UNSAFE_PATH "$DB_DIR/craftrcon.db" "$DB_DIR/craftrcon.db"
+    fi
+    die ERR_UPDATE_NO_DB "$DB_DIR/craftrcon.db"
+  fi
+  for _f in craftrcon.db-wal craftrcon.db-shm; do
+    if [ -e "$DB_DIR/$_f" ] || [ -L "$DB_DIR/$_f" ]; then
+      safe_file "$DB_DIR/$_f" || die ERR_UPDATE_UNSAFE_PATH "$DB_DIR/$_f" "$DB_DIR/$_f"
+    fi
+  done
+  if [ -e "$BACKUP_ROOT" ] || [ -L "$BACKUP_ROOT" ]; then
+    if [ -L "$BACKUP_ROOT" ] || [ ! -d "$BACKUP_ROOT" ] || ! owned_by_root "$BACKUP_ROOT"; then
+      die ERR_UPDATE_UNSAFE_PATH "$BACKUP_ROOT" "$BACKUP_ROOT"
+    fi
+  fi
 }
 
 check_update_system() {
-  local _d _min
+  local _min
   check_source ./update.sh
   detect_os
   if [ "$OPT_NO_SERVICE" = 1 ]; then
@@ -145,9 +203,10 @@ check_update_system() {
   fi
   command -v curl >/dev/null 2>&1 || die ERR_NO_CURL
   locate_node
-  for _d in "$APP_PREV" "$NODE_PREV"; do
-    if [ -e "$_d" ]; then die ERR_UPDATE_LEFTOVER "$_d" "$_d"; fi
-  done
+  if [ -e "$APP_PREV" ]; then die ERR_UPDATE_LEFTOVER "$APP_PREV" "$APP_DIR" "$APP_PREV" "$APP_DIR" "$APP_PREV"; fi
+  if [ -e "$NODE_PREV" ]; then die ERR_UPDATE_LEFTOVER "$NODE_PREV" "$NODE_DIR" "$NODE_PREV" "$NODE_DIR" "$NODE_PREV"; fi
+  DB_DIR="$(config_data_dir)"
+  check_data_paths
   init_run_as
   # The new version decides which Node.js it needs (node_resolve keeps the installed one
   # when it is new enough).
@@ -188,58 +247,95 @@ health_version() {
   printf '%s\n' "$_body" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'
 }
 
+# proxy_installed: true when the HTTPS proxy (Caddy, installs with a domain) is set up.
+proxy_installed() { [ -x "$CADDY_BIN" ] && [ -f "$CADDYFILE" ] && [ -e "$(_svc_path "$PROXY_SVC")" ]; }
+
 # ------------------------------------------------------------------ backups --
 
 # make_backup: BACKUP_ROOT/<YYYYMMDD-HHMMSS>-<OLD>/ (root only) with the database files,
-# config.json and installed.json. Never secret.key: it stays where it is.
+# config.json, installed.json and the service files. Never secret.key: it stays where it
+# is. Written under a temporary name and renamed when complete.
 make_backup() {
-  local _f
-  install -d -m 0700 -o root -g root "$BACKUP_ROOT"
-  chown root:root "$BACKUP_ROOT"
+  local _f _name _n
+  check_data_paths # again: the panel is stopped now
+  if [ ! -e "$BACKUP_ROOT" ] && [ ! -L "$BACKUP_ROOT" ]; then
+    mkdir -m 0700 "$BACKUP_ROOT" # (fails on anything planted there meanwhile)
+  fi
+  if [ -L "$BACKUP_ROOT" ] || [ ! -d "$BACKUP_ROOT" ]; then die ERR_UPDATE_UNSAFE_PATH "$BACKUP_ROOT" "$BACKUP_ROOT"; fi
+  chown -h root:root "$BACKUP_ROOT"
+  owned_by_root "$BACKUP_ROOT" || die ERR_UPDATE_UNSAFE_PATH "$BACKUP_ROOT" "$BACKUP_ROOT"
   chmod 0700 "$BACKUP_ROOT"
-  BACKUP_DIR="$BACKUP_ROOT/$(date +%Y%m%d-%H%M%S)-$OLD_VERSION"
-  while [ -e "$BACKUP_DIR" ]; do # two updates within one second
+  _name="$(date +%Y%m%d-%H%M%S)-$OLD_VERSION"
+  while [ -e "$BACKUP_ROOT/$_name" ] || [ -e "$BACKUP_ROOT/.partial-$_name" ]; do # two updates within one second
     sleep 1
-    BACKUP_DIR="$BACKUP_ROOT/$(date +%Y%m%d-%H%M%S)-$OLD_VERSION"
+    _name="$(date +%Y%m%d-%H%M%S)-$OLD_VERSION"
   done
-  install -d -m 0700 -o root -g root "$BACKUP_DIR"
+  BACKUP_PARTIAL="$BACKUP_ROOT/.partial-$_name"
+  mkdir -m 0700 "$BACKUP_PARTIAL"
+  chown -h root:root "$BACKUP_PARTIAL"
   for _f in "${DB_FILES[@]}"; do
-    if [ -f "$DATA_DIR/$_f" ]; then cp -p "$DATA_DIR/$_f" "$BACKUP_DIR/$_f"; fi
+    if safe_file "$DB_DIR/$_f"; then cp -p "$DB_DIR/$_f" "$BACKUP_PARTIAL/$_f"; fi
   done
-  if [ -f "$CONFIG_FILE" ]; then cp -p "$CONFIG_FILE" "$BACKUP_DIR/config.json"; fi
-  cp -p "$INSTALLED_FILE" "$BACKUP_DIR/installed.json"
+  [ -f "$BACKUP_PARTIAL/craftrcon.db" ] || die ERR_UPDATE_NO_DB "$DB_DIR/craftrcon.db"
+  if [ -f "$CONFIG_FILE" ]; then cp -p "$CONFIG_FILE" "$BACKUP_PARTIAL/config.json"; fi
+  cp -p "$INSTALLED_FILE" "$BACKUP_PARTIAL/installed.json"
+  if [ "$OPT_NO_SERVICE" != 1 ]; then
+    for _n in "$SVC" "$PROXY_SVC"; do
+      if [ -f "$(_svc_path "$_n")" ]; then cp -p "$(_svc_path "$_n")" "$BACKUP_PARTIAL/$_n.unit"; fi
+    done
+  fi
+  BACKUP_DIR="$BACKUP_ROOT/$_name"
+  mv -T "$BACKUP_PARTIAL" "$BACKUP_DIR"
+  BACKUP_PARTIAL=''
   BACKUP_DONE=1
   ok BACKUP_SAVED "$BACKUP_DIR"
 }
 
-# prune_backups: keeps the BACKUPS_KEPT newest backups (by name: the date comes first).
-# Folders that do not look like one of ours are never touched.
+# prune_backups: keeps the BACKUPS_KEPT newest backups (by name: the date comes first),
+# always including the one just made. Folders that do not look like one of ours are never
+# touched.
 prune_backups() {
-  local _d _all=() _i
+  local _d _all=() _i _drop
   for _d in "$BACKUP_ROOT"/*; do
-    [ -d "$_d" ] || continue
+    [ -d "$_d" ] && [ ! -L "$_d" ] || continue
+    [ "$_d" != "$BACKUP_DIR" ] || continue
     [[ "${_d##*/}" =~ ^[0-9]{8}-[0-9]{6}-[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
     _all+=("$_d")
   done
-  [ "${#_all[@]}" -gt "$BACKUPS_KEPT" ] || return 0
+  _drop=$((${#_all[@]} - (BACKUPS_KEPT - 1)))
+  [ "$_drop" -gt 0 ] || return 0
   mapfile -t _all < <(printf '%s\n' "${_all[@]}" | LC_ALL=C sort)
-  for ((_i = 0; _i < ${#_all[@]} - BACKUPS_KEPT; _i++)); do
+  for ((_i = 0; _i < _drop; _i++)); do
     rm -rf "${_all[_i]}"
     info BACKUP_PRUNED "${_all[_i]}" "$BACKUPS_KEPT"
   done
 }
 
-# restore_db: puts the backed-up database files back (the service is stopped). A -wal or
-# -shm the new version left is removed: SQLite would apply it to the old database.
+# restore_db: puts the backed-up database files back (the panel is stopped). Returns 2 when
+# the backup has no database. Copies are staged inside the root-only backup folder and
+# renamed into place: a rename replaces a planted symbolic link, it never follows it. A
+# -wal or -shm the new version left is removed (SQLite would apply it to the old database).
 restore_db() {
   local _f
-  [ -f "$BACKUP_DIR/craftrcon.db" ] || return 0
-  rm -f "$DATA_DIR/craftrcon.db-wal" "$DATA_DIR/craftrcon.db-shm" || return 1
+  [ -f "$BACKUP_DIR/craftrcon.db" ] || return 2
+  rm -f "$DB_DIR/craftrcon.db-wal" "$DB_DIR/craftrcon.db-shm" || return 1
   for _f in "${DB_FILES[@]}"; do
     [ -f "$BACKUP_DIR/$_f" ] || continue
-    cp -p "$BACKUP_DIR/$_f" "$DATA_DIR/.$_f.restore" || return 1
-    mv -f "$DATA_DIR/.$_f.restore" "$DATA_DIR/$_f" || return 1
+    cp -p "$BACKUP_DIR/$_f" "$BACKUP_DIR/.restore-$_f" || return 1
+    rm -f "$DB_DIR/$_f" || return 1 # (a link, if planted, goes; its target is untouched)
+    mv -fT "$BACKUP_DIR/.restore-$_f" "$DB_DIR/$_f" || return 1
+    chown -h "$SVC_USER:$SVC_USER" "$DB_DIR/$_f" || return 1
   done
+}
+
+# restore_units: the service files saved in the backup go back in place.
+restore_units() {
+  local _n
+  for _n in "$SVC" "$PROXY_SVC"; do
+    [ -f "$BACKUP_DIR/$_n.unit" ] || continue
+    cp -p "$BACKUP_DIR/$_n.unit" "$(_svc_path "$_n")" || return 1
+  done
+  if [ "$INIT" = systemd ] && [ -z "$SERVICE_ROOT" ]; then systemctl daemon-reload || return 1; fi
 }
 
 # -------------------------------------------------------------------- steps --
@@ -266,7 +362,10 @@ step_node() {
   # A download replaces NODE_DIR: keep the current one until the update succeeds.
   if [ "$NODE_ACTION" = download ] && [ -e "$NODE_DIR" ]; then mv "$NODE_DIR" "$NODE_PREV"; fi
   ensure_node "$WORK_DIR"
-  if [ "$NODE_ACTION" != keep ]; then ok NODE_READY "$NODE_VERSION"; fi
+  case "$NODE_ACTION" in
+    keep | system) ;;
+    *) ok NODE_READY "$NODE_VERSION" ;;
+  esac
 }
 
 step_deps() {
@@ -274,27 +373,41 @@ step_deps() {
   install_app_deps
 }
 
+# refresh_units: re-renders the service files from the new version's templates (e.g. new
+# ExecStart flags). The previous ones are in the backup.
+refresh_units() {
+  [ "$OPT_NO_SERVICE" != 1 ] || return 0
+  UNITS_WRITTEN=1
+  write_service
+  if [ -f "$BACKUP_DIR/$PROXY_SVC.unit" ] && proxy_installed; then
+    write_proxy_service
+    if [ "$(cat "$BACKUP_DIR/$PROXY_SVC.unit")" != "$(cat "$(_svc_path "$PROXY_SVC")")" ]; then PROXY_CHANGED=1; fi
+  fi
+}
+
 step_start() {
   local _v
   begin_step 6 STEP_UPD_START
+  refresh_units
   NEW_STARTED=1
   start_panel
   wait_health "$(health_url)" "$HEALTH_TIMEOUT" || die ERR_HEALTH "$PANEL_PORT" "$HEALTH_TIMEOUT" "$LOGS_HINT"
   _v="$(health_version "$(health_url)")"
   [ "$_v" = "$NEW_VERSION" ] || die ERR_UPDATE_VERSION_MISMATCH "${_v:-?}" "$NEW_VERSION"
+  if [ "$PROXY_CHANGED" = 1 ]; then service_start "$PROXY_SVC"; fi
   ok PANEL_HEALTHY "$PANEL_PORT"
 }
 
 # step_record: installed.json gets the new version, commit and updatedAt (port, domain,
 # firewall rules and installedAt stay); then the previous copies are deleted.
 step_record() {
-  local _d
+  local _d _now
   CURRENT_STEP="$(msg STEP_UPD_RECORD)"
   RECORDING=1
-  UPDATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  installed_json "$NEW_VERSION" "$(source_commit)" "${KEEP_INSTALLED_AT:-$UPDATED_AT}" "$KEEP_PORT" "$KEEP_DOMAIN" \
+  _now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  installed_json "$NEW_VERSION" "$(source_commit)" "${KEEP_INSTALLED_AT:-$_now}" "$_now" "$KEEP_PORT" "$KEEP_DOMAIN" \
     ${KEEP_FIREWALL[@]+"${KEEP_FIREWALL[@]}"} >"$WORK_DIR/installed.json" # (bash < 4.4: empty array + set -u)
-  install -m 0644 -o root -g root "$WORK_DIR/installed.json" "$INSTALLED_FILE"
+  write_installed_file "$WORK_DIR/installed.json"
   ARMED=0
   for _d in "$APP_PREV" "$NODE_PREV"; do
     if [ -e "$_d" ]; then rm -rf "$_d" || warn UPDATE_CLEANUP_FAILED "$_d" "$_d"; fi
@@ -310,16 +423,38 @@ show_update_result() {
 }
 
 # ----------------------------------------------------------------- rollback --
+# The rollback runs from the EXIT trap with errexit off and INT/TERM/HUP/PIPE ignored. The
+# terminal may be gone (SSH dropped, closed pipe): every write ignores errors, and the
+# report also goes to update.log in the backup folder.
+
+# rb_say LEVEL TEXT: one line of rollback output (LEVEL: error, warn or '').
+rb_say() {
+  local _color=''
+  case "$1" in
+    error) _color="$C_RED" ;;
+    warn) _color="$C_YELLOW" ;;
+  esac
+  if [ -n "$1" ]; then
+    printf '%s%s%s %s\n' "$_color" "$1" "$C_RESET" "$2" 3>&2 2>/dev/null 1>&3 || true
+  else
+    printf '%s\n' "$2" 3>&2 2>/dev/null 1>&3 || true
+  fi
+  if [ -n "$UPDATE_LOG" ]; then printf '%s\n' "${1:+$1 }$2" >>"$UPDATE_LOG" 2>/dev/null || true; fi
+}
+
+# rb_run CMD [ARGS...]: runs a step in a subshell (a `die` in it cannot end the rollback),
+# its output to the log only.
+rb_run() { ("$@") >>"${UPDATE_LOG:-/dev/null}" 2>&1; }
 
 MANUAL_N=0
 manual_step() { # manual_step KEY ARGS...: one numbered recovery step
   MANUAL_N=$((MANUAL_N + 1))
-  printf '  %s. %s\n' "$MANUAL_N" "$(msg "$@")" >&2
+  rb_say '' "  $MANUAL_N. $(msg "$@")"
 }
 
 # manual_recovery PROBLEMS: the rollback did not finish; prints exactly what is left to do.
 manual_recovery() {
-  local _stop _start
+  local _stop _start _units='' _n
   if [ "$OPT_NO_SERVICE" = 1 ]; then
     _stop="pkill -f $APP_DIR/src/server.js"
     _start="$(msg MANUAL_START_NO_SERVICE)"
@@ -330,14 +465,20 @@ manual_recovery() {
     _stop="systemctl stop $SVC"
     _start="systemctl start $SVC"
   fi
-  printf '%serror%s %s\n' "$C_RED" "$C_RESET" \
-    "$(msg ROLLBACK_FAILED "$NEW_VERSION" "${CURRENT_STEP:-?}" "$1" "$OLD_VERSION")" >&2
+  rb_say error "$(msg ROLLBACK_FAILED "$NEW_VERSION" "${CURRENT_STEP:-?}" "$1" "$OLD_VERSION")"
   MANUAL_N=0
   manual_step MANUAL_STOP "$_stop"
   if [ -d "$APP_PREV" ]; then manual_step MANUAL_APP "rm -rf $APP_DIR && mv $APP_PREV $APP_DIR"; fi
   if [ -d "$NODE_PREV" ]; then manual_step MANUAL_NODE "rm -rf $NODE_DIR && mv $NODE_PREV $NODE_DIR"; fi
+  if [ "$UNITS_WRITTEN" = 1 ] && [ "$UNITS_RESTORED" != 1 ]; then
+    for _n in "$SVC" "$PROXY_SVC"; do
+      if [ -f "$BACKUP_DIR/$_n.unit" ]; then _units+="${_units:+ && }cp $BACKUP_DIR/$_n.unit $(_svc_path "$_n" 2>/dev/null)"; fi
+    done
+    if [ "$INIT" = systemd ]; then _units+=" && systemctl daemon-reload"; fi
+    manual_step MANUAL_UNITS "$_units"
+  fi
   if [ "$BACKUP_DONE" = 1 ] && [ "$NEW_STARTED" = 1 ] && [ "$DB_RESTORED" != 1 ]; then
-    manual_step MANUAL_DB "rm -f $DATA_DIR/craftrcon.db-wal $DATA_DIR/craftrcon.db-shm && cp -p $BACKUP_DIR/craftrcon.db* $DATA_DIR/"
+    manual_step MANUAL_DB "rm -f $DB_DIR/craftrcon.db-wal $DB_DIR/craftrcon.db-shm && cp -p $BACKUP_DIR/craftrcon.db* $DB_DIR/ && chown $SVC_USER:$SVC_USER $DB_DIR/craftrcon.db*"
   fi
   if [ "$RECORDING" = 1 ] && [ "$INSTALLED_RESTORED" != 1 ]; then
     manual_step MANUAL_INSTALLED "cp -p $BACKUP_DIR/installed.json $INSTALLED_FILE"
@@ -346,31 +487,55 @@ manual_recovery() {
   manual_step MANUAL_CHECK "$OLD_VERSION" "curl -s $(health_url)"
 }
 
-# rollback: runs from the EXIT trap (errexit off). Every step is checked; a failing one is
-# recorded and the others still run. Functions that may `die` run in a subshell.
+# rollback: every step is checked; a failing one is recorded and the others still run.
 rollback() {
-  local _problems=() _joined _backup
+  local _problems=() _joined _backup _stopped=0 _rc
   ARMED=0
-  echo >&2
-  warn ROLLBACK_START "${CURRENT_STEP:-?}"
-  (stop_panel) || _problems+=("$(msg RB_STOP)")
+  if [ "$BACKUP_DONE" = 1 ]; then
+    UPDATE_LOG="$BACKUP_DIR/update.log"
+    printf '== %s ./update.sh %s -> %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$OLD_VERSION" "$NEW_VERSION" >>"$UPDATE_LOG" 2>/dev/null || true
+  fi
+  rb_say '' ''
+  rb_say warn "$(msg ROLLBACK_START "${CURRENT_STEP:-?}")"
+  if rb_run stop_panel; then _stopped=1; else _problems+=("$(msg RB_STOP)"); fi
   if [ -d "$APP_PREV" ]; then
-    { rm -rf "$APP_DIR" && mv "$APP_PREV" "$APP_DIR"; } || _problems+=("$(msg RB_APP)")
+    { rm -rf "$APP_DIR" && mv "$APP_PREV" "$APP_DIR"; } >/dev/null 2>&1 || _problems+=("$(msg RB_APP)")
   fi
   if [ -d "$NODE_PREV" ]; then
-    { rm -rf "$NODE_DIR" && mv "$NODE_PREV" "$NODE_DIR"; } || _problems+=("$(msg RB_NODE)")
+    { rm -rf "$NODE_DIR" && mv "$NODE_PREV" "$NODE_DIR"; } >/dev/null 2>&1 || _problems+=("$(msg RB_NODE)")
     NODE_BIN="$NODE_DIR/bin/node"
   fi
+  if [ "$UNITS_WRITTEN" = 1 ]; then
+    if rb_run restore_units; then UNITS_RESTORED=1; else _problems+=("$(msg RB_UNITS)"); fi
+  fi
   if [ "$BACKUP_DONE" = 1 ] && [ "$NEW_STARTED" = 1 ]; then
-    if restore_db; then DB_RESTORED=1; else _problems+=("$(msg RB_DB)"); fi
+    if [ "$_stopped" != 1 ]; then
+      _problems+=("$(msg RB_DB_SKIPPED)") # never under a running panel
+    else
+      _rc=0
+      restore_db >>"$UPDATE_LOG" 2>&1 || _rc=$?
+      case "$_rc" in
+        0) DB_RESTORED=1 ;;
+        2) _problems+=("$(msg RB_DB_MISSING)") ;;
+        *) _problems+=("$(msg RB_DB)") ;;
+      esac
+    fi
   fi
   if [ "$RECORDING" = 1 ]; then
-    if cp -p "$BACKUP_DIR/installed.json" "$INSTALLED_FILE"; then INSTALLED_RESTORED=1; else _problems+=("$(msg RB_INSTALLED)"); fi
+    if { cp -p "$BACKUP_DIR/installed.json" "$INSTALLED_FILE.tmp" && mv -f "$INSTALLED_FILE.tmp" "$INSTALLED_FILE"; } >/dev/null 2>&1; then
+      INSTALLED_RESTORED=1
+    else
+      _problems+=("$(msg RB_INSTALLED)")
+    fi
   fi
-  if (start_panel); then
+  if [ -n "$BACKUP_PARTIAL" ]; then rm -rf "$BACKUP_PARTIAL" >/dev/null 2>&1; fi # an unfinished backup is worth nothing
+  if rb_run start_panel; then
     if ! wait_health "$(health_url)" "$HEALTH_TIMEOUT" ||
       [ "$(health_version "$(health_url)")" != "$OLD_VERSION" ]; then
       _problems+=("$(msg RB_HEALTH "$OLD_VERSION")")
+    fi
+    if [ "$PROXY_CHANGED" = 1 ] && [ "$UNITS_RESTORED" = 1 ]; then
+      rb_run service_start "$PROXY_SVC" || _problems+=("$(msg RB_START)")
     fi
   else
     _problems+=("$(msg RB_START)")
@@ -379,18 +544,18 @@ rollback() {
   if [ "${#_problems[@]}" -eq 0 ]; then
     _backup="$BACKUP_DIR"
     if [ "$BACKUP_DONE" != 1 ]; then _backup="$(msg BACKUP_NONE)"; fi
-    printf '%serror%s %s\n' "$C_RED" "$C_RESET" \
-      "$(msg UPDATE_ROLLED_BACK "$NEW_VERSION" "${CURRENT_STEP:-?}" "$OLD_VERSION" "$_backup")" >&2
+    rb_say error "$(msg UPDATE_ROLLED_BACK "$NEW_VERSION" "${CURRENT_STEP:-?}" "$OLD_VERSION" "$_backup")"
   else
     _joined="$(printf '%s; ' "${_problems[@]}")"
     manual_recovery "${_joined%; }"
   fi
+  if [ -n "$UPDATE_LOG" ]; then rb_say '' "$(msg ROLLBACK_LOG "$UPDATE_LOG")"; fi
 }
 
 on_exit() {
   local _rc=$?
+  trap '' INT TERM HUP PIPE # nothing may interrupt the rollback halfway
   trap - ERR
-  trap '' INT TERM # the rollback must not be interrupted halfway
   set +e
   if [ "$_rc" -ne 0 ] && [ "$ARMED" = 1 ]; then
     rollback
@@ -409,13 +574,15 @@ main() {
   require_root ./update.sh
   is_installed || die ERR_NOT_INSTALLED
   check_versions
-  confirm_update
   check_update_system
+  confirm_update
   read_kept_settings
 
   WORK_DIR="$(mktemp -d)"
   trap on_exit EXIT
-  trap 'exit 130' INT TERM
+  # Ctrl-C, kill, a dropped SSH session (HUP) or a closed output pipe all end in on_exit,
+  # which rolls back once the update has started.
+  trap 'exit 130' INT TERM HUP PIPE
   node_resolve "$WORK_DIR" # may fetch the Node.js release list; still no changes
 
   info UPDATE_START "$OLD_VERSION" "$NEW_VERSION"

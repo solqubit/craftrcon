@@ -116,10 +116,10 @@ if command -v node >/dev/null 2>&1; then
   assert_eq '"127.0.0.1"' "$(json_get .host <<<"$cfg")" "config host with domain"
   assert_eq '"panel.example.com"' "$(json_get .domain <<<"$cfg")" "config domain"
   assert_eq 'true' "$(json_get .trustProxy <<<"$cfg")" "config trustProxy with domain"
-  inst="$(flow 'installed_json 0.1.0 "" 2026-10-17T00:00:00Z 8080 ""')"
+  inst="$(flow 'installed_json 0.1.0 "" 2026-10-17T00:00:00Z "" 8080 ""')"
   assert_eq '{"version":"0.1.0","commit":null,"installedAt":"2026-10-17T00:00:00Z","port":8080,"domain":null,"firewall":[]}' \
     "$(json_get '' <<<"$inst")" "installed.json without commit/domain/firewall"
-  inst="$(flow 'installed_json 1.2.3 0123456789abcdef0123456789abcdef01234567 T 8443 a.io ufw:80 ufw:443')"
+  inst="$(flow 'installed_json 1.2.3 0123456789abcdef0123456789abcdef01234567 T "" 8443 a.io ufw:80 ufw:443')"
   assert_eq '"0123456789abcdef0123456789abcdef01234567"' "$(json_get .commit <<<"$inst")" "installed.json commit"
   assert_eq '"a.io"' "$(json_get .domain <<<"$inst")" "installed.json domain"
   assert_eq '[{"tool":"ufw","port":80},{"tool":"ufw","port":443}]' "$(json_get .firewall <<<"$inst")" "installed.json firewall entries"
@@ -192,6 +192,21 @@ assert_fail "node 22.12.0 is too old" flow "node_version_ok '$TMP/bin-node/old'"
 assert_ok "node 22.13.0 is enough" flow "node_version_ok '$TMP/bin-node/min'"
 assert_ok "node 24.11.0 is enough" flow "node_version_ok '$TMP/bin-node/new'"
 assert_fail "missing node binary" flow "node_version_ok '$TMP/bin-node/none'"
+# Alpine (musl): apk only when the node on PATH (with npm) is too old or missing.
+for v in good old nonpm none; do mkdir -p "$TMP/alp-$v"; done
+cp "$TMP/bin-node/new" "$TMP/alp-good/node"
+cp "$TMP/bin-node/old" "$TMP/alp-old/node"
+cp "$TMP/bin-node/new" "$TMP/alp-nonpm/node"
+printf '#!/bin/sh\n' >"$TMP/alp-good/npm"
+cp "$TMP/alp-good/npm" "$TMP/alp-old/npm"
+chmod +x "$TMP"/alp-*/*
+alpine() { flow "PATH='$TMP/alp-$1':/usr/bin:/bin; NODE_DIR='$TMP/nonode'; LIBC=musl; node_resolve '$TMP'; echo \$NODE_ACTION"; }
+assert_eq "system" "$(alpine good)" "musl: a node on PATH that is new enough (with npm) is kept (no apk)"
+assert_eq "apk" "$(alpine old)" "musl: a node that is too old -> apk"
+if ! PATH=/usr/bin:/bin command -v npm >/dev/null 2>&1 && ! PATH=/usr/bin:/bin command -v node >/dev/null 2>&1; then
+  assert_eq "apk" "$(alpine nonpm)" "musl: node without npm -> apk"
+  assert_eq "apk" "$(alpine none)" "musl: no node -> apk"
+fi
 assert_eq "2.10.2" "$(flow 'caddy_parse_tag' <"$FIX/caddy-release.json")" "caddy tag from the API JSON"
 assert_eq "2.10.2" "$(flow 'echo https://github.com/caddyserver/caddy/releases/tag/v2.10.2 | caddy_parse_tag')" "caddy tag from the redirect URL"
 assert_eq "" "$(flow 'echo "{\"message\":\"API rate limit exceeded\"}" | caddy_parse_tag')" "no caddy tag from an API error"
