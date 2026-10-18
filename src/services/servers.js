@@ -9,7 +9,7 @@ const DEFAULT_ICON = 'mountain';
 const DEFAULT_COLOR = 'emerald';
 
 const MAX_NAME = 32;
-const MAX_HOST = 255;
+export const MAX_HOST = 255;
 const MAX_PASSWORD = 512;
 
 const isPort = (v) => Number.isInteger(v) && v >= 1 && v <= 65535;
@@ -24,7 +24,7 @@ export class NameTakenError extends Error {
 }
 
 // Returns the trimmed string, or null after recording the error code in `fields`.
-function checkString(fields, field, value, max) {
+export function checkString(fields, field, value, max) {
   if (typeof value !== 'string') {
     fields[field] = 'invalid';
     return null;
@@ -71,18 +71,21 @@ export function validateServerInput(input, current = null) {
   choice('color', COLORS, DEFAULT_COLOR);
 
   // Password: required on create; on update empty or absent means "unchanged".
-  const pw = body.password;
-  if (pw === undefined || pw === null || pw === '') {
-    if (!current) fields.password = 'required';
-  } else if (typeof pw !== 'string') {
-    fields.password = 'invalid';
-  } else if (pw.length > MAX_PASSWORD) {
-    fields.password = 'too_long';
-  } else {
-    value.password = pw;
-  }
+  const password = checkPassword(fields, body.password);
+  if (password !== null) value.password = password;
+  else if (!current && !fields.password) fields.password = 'required';
 
   return { fields, value };
+}
+
+// Returns the password, or null when it is absent/empty (no error recorded) or
+// invalid (error recorded in `fields`).
+export function checkPassword(fields, pw) {
+  if (pw === undefined || pw === null || pw === '') return null;
+  if (typeof pw !== 'string') fields.password = 'invalid';
+  else if (pw.length > MAX_PASSWORD) fields.password = 'too_long';
+  else return pw;
+  return null;
 }
 
 function toPublic(row) {

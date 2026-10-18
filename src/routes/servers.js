@@ -1,5 +1,12 @@
 import { RconClient, RconError } from '../minecraft/rcon.js';
-import { DEFAULT_RCON_PORT, NameTakenError, validateServerInput } from '../services/servers.js';
+import {
+  DEFAULT_RCON_PORT,
+  MAX_HOST,
+  NameTakenError,
+  checkPassword,
+  checkString,
+  validateServerInput,
+} from '../services/servers.js';
 
 const TEST_TIMEOUT_MS = 5000;
 const POSITIVE_INT = /^[1-9]\d{0,14}$/;
@@ -18,7 +25,7 @@ function parseId(raw, reply) {
 
 // Connection test with a throwaway client, never the shared manager: the
 // values under test may differ from the saved ones.
-async function probe({ host, port, password }) {
+async function probe({ host, port, password }, log) {
   const client = new RconClient({ host, port, password, timeoutMs: TEST_TIMEOUT_MS });
   try {
     await client.connect();
@@ -26,7 +33,9 @@ async function probe({ host, port, password }) {
     await client.exec('list');
     return { ok: true, latencyMs: Math.round(performance.now() - start) };
   } catch (err) {
-    return { ok: false, error: err instanceof RconError ? err.code : 'CLOSED' };
+    if (err instanceof RconError) return { ok: false, error: err.code };
+    log.error({ err }, 'unexpected error during server connection test');
+    return { ok: false, error: 'CLOSED' };
   } finally {
     client.close();
   }
@@ -48,24 +57,24 @@ export function registerServerRoutes(app) {
       if (Number.isSafeInteger(body.id) && body.id > 0) id = body.id;
       else fields.id = 'invalid';
     }
-    if (typeof body.host !== 'string') fields.host = body.host === undefined ? 'required' : 'invalid';
-    else if (body.host.trim() === '') fields.host = 'required';
+    const host = checkString(fields, 'host', body.host ?? '', MAX_HOST);
     const port = body.rconPort ?? DEFAULT_RCON_PORT;
     if (!Number.isInteger(port) || port < 1 || port > 65535) fields.rconPort = 'invalid';
-
-    let password = body.password;
-    const useStored = password === undefined || password === null || password === '';
-    if (!useStored && typeof password !== 'string') fields.password = 'invalid';
+    let password = checkPassword(fields, body.password);
     if (Object.keys(fields).length > 0) return validation(reply, fields);
 
     if (id !== null && !svc().get(id)) return notFound(reply);
-    if (useStored) {
+    if (password === null) {
       const stored = id === null ? null : svc().credentials(id);
-      if (!stored) return validation(reply, { password: 'required' });
+      // The saved password is only ever sent to the saved address: otherwise
+      // this route would hand it to whatever host the caller names.
+      const sameTarget =
+        stored && stored.host.toLowerCase() === host.toLowerCase() && stored.rcon_port === port;
+      if (!sameTarget) return validation(reply, { password: 'required' });
       password = stored.password;
     }
 
-    return probe({ host: body.host.trim(), port, password });
+    return probe({ host, port, password }, request.log);
   });
 
   app.post('/api/servers', async (request, reply) => {

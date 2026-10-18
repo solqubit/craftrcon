@@ -300,3 +300,60 @@ test('connection test validates its input and never touches the shared manager',
   const bad = await call('POST', '/api/servers/test', { host: '', rconPort: 99999, password: 'x' });
   assert.deepEqual(bad.json(), { error: 'validation', fields: { host: 'required', rconPort: 'invalid' } });
 });
+
+test('the stored password is never sent to a host or port other than the saved one', async (t) => {
+  const { call } = await setup(t);
+  const saved = await startFakeMinecraft({ password: 'goodpw' });
+  t.after(() => saved.close());
+  const { id } = (
+    await call('POST', '/api/servers', valid({ host: '127.0.0.1', rconPort: saved.rconPort, password: 'goodpw' }))
+  ).json();
+
+  // A listener standing in for an attacker: it must not even get a connection.
+  let connections = 0;
+  const bytes = [];
+  const rogue = net.createServer((socket) => {
+    connections += 1;
+    socket.on('data', (chunk) => bytes.push(chunk));
+    socket.on('error', () => {});
+  });
+  await new Promise((resolve) => rogue.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => rogue.close(resolve)));
+  const roguePort = rogue.address().port;
+
+  const wrongPort = await call('POST', '/api/servers/test', { id, host: '127.0.0.1', rconPort: roguePort });
+  assert.equal(wrongPort.statusCode, 400);
+  assert.deepEqual(wrongPort.json(), { error: 'validation', fields: { password: 'required' } });
+
+  const wrongHost = await call('POST', '/api/servers/test', { id, host: 'localhost', rconPort: saved.rconPort });
+  assert.equal(wrongHost.statusCode, 400);
+  assert.deepEqual(wrongHost.json(), { error: 'validation', fields: { password: 'required' } });
+
+  const defaultPort = await call('POST', '/api/servers/test', { id, host: '127.0.0.1' });
+  assert.equal(defaultPort.statusCode, 400, 'an omitted port is not the saved port');
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(connections, 0, 'nothing connected to the other address');
+  assert.equal(Buffer.concat(bytes).length, 0);
+  assert.deepEqual(saved.received, []);
+
+  // Same target (host compared trimmed and case-insensitively) still works.
+  const same = await call('POST', '/api/servers/test', { id, host: ' 127.0.0.1 ', rconPort: saved.rconPort });
+  assert.equal(same.json().ok, true);
+
+  // An explicit password may go anywhere: the caller supplied it themselves.
+  const explicit = await call('POST', '/api/servers/test', { id, host: '127.0.0.1', rconPort: roguePort, password: 'mine' });
+  assert.equal(explicit.statusCode, 200);
+  assert.equal(explicit.json().ok, false);
+});
+
+test('connection test applies the same length caps as create', async (t) => {
+  const { call } = await setup(t);
+  const res = await call('POST', '/api/servers/test', {
+    host: 'h'.repeat(256),
+    rconPort: 25575,
+    password: 'p'.repeat(513),
+  });
+  assert.equal(res.statusCode, 400);
+  assert.deepEqual(res.json(), { error: 'validation', fields: { host: 'too_long', password: 'too_long' } });
+});
