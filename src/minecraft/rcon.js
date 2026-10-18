@@ -11,6 +11,7 @@ const TYPE_AUTH = 3;
 const AUTH_FAILED_ID = -1;
 const MAX_PACKET_LENGTH = 65_536; // vanilla never sends more than ~4 KiB
 const MAX_REQUEST_ID = 2 ** 31 - 2; // leaves room for the sentinel id + 1
+const KEEPALIVE_DELAY_MS = 30_000;
 
 const SOCKET_ERROR_CODES = {
   ECONNREFUSED: 'ECONNREFUSED',
@@ -57,17 +58,20 @@ export class RconClient extends EventEmitter {
   #port;
   #password;
   #timeoutMs;
+  #keepAlive;
   #conn = null; // current connection, authenticated or not
   #connecting = null; // promise of the connect() in progress
   #pending = null; // the single in-flight exec
   #nextId = 1;
 
-  constructor({ host, port, password, timeoutMs = 5000 }) {
+  // keepAlive: enable TCP keepalive so a silently dead peer is noticed.
+  constructor({ host, port, password, timeoutMs = 5000, keepAlive = false }) {
     super();
     this.#host = host;
     this.#port = port;
     this.#password = password;
     this.#timeoutMs = timeoutMs;
+    this.#keepAlive = keepAlive;
   }
 
   // Request ids are positive int32, incrementing; a command uses id and id + 1.
@@ -85,6 +89,7 @@ export class RconClient extends EventEmitter {
     const attempt = new Promise((resolve, reject) => {
       const socket = net.createConnection({ host: this.#host, port: this.#port });
       socket.setNoDelay(true);
+      if (this.#keepAlive) socket.setKeepAlive(true, KEEPALIVE_DELAY_MS);
       const conn = {
         socket,
         buf: Buffer.alloc(0),
