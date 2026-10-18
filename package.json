@@ -1,0 +1,33 @@
+{
+  "name": "craftrcon",
+  "version": "0.1.0",
+  "description": "Web panel to administer Minecraft servers over RCON",
+  "license": "MIT",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/solqubit/craftrcon.git"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test \"test/**/*.test.js\"",
+    "test:shell": "bash test/shell/run.sh",
+    "vendor": "node scripts/vendor.js",
+    "fake-mc": "node scripts/dev-fake-server.js"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.1.3",
+    "@fastify/static": "^10.1.6",
+    "@fastify/websocket": "^11.3.4",
+    "fastify": "^5.12.7"
+  },
+  "devDependencies": {
+    "htm": "^3.1.1",
+    "minecraft-data": "^3.117.0"
+  }
+}
