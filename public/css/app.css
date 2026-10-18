@@ -631,6 +631,21 @@ button, input, select, textarea {
   color: var(--text-2);
 }
 
+/* The command a confirmation dialog is about (useCommandRunner; the Console
+   has its own copy of the dialog and keeps the .cl- name). */
+.confirm-cmd,
+.cl-confirm-cmd {
+  display: block;
+  padding: 8px 10px;
+  border: 1px solid var(--danger-line);
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  color: var(--danger-text);
+  font-family: var(--mono);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
 /* ---------- Toasts ---------- */
 .toast-region {
   position: fixed;
@@ -1891,18 +1906,6 @@ button, input, select, textarea {
   font-size: 12px;
 }
 
-.cl-confirm-cmd {
-  display: block;
-  padding: 8px 10px;
-  border: 1px solid var(--danger-line);
-  border-radius: var(--radius-sm);
-  background: var(--danger-soft);
-  color: var(--danger-text);
-  font-family: var(--mono);
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
-
 /* Side panel: favorites and history */
 .cl-side {
   display: flex;
@@ -2767,9 +2770,37 @@ button, input, select, textarea {
   white-space: nowrap;
 }
 
-.mod-names {
+.mod-list {
   margin: 0;
   padding: 0;
+  list-style: none;
+}
+
+.mod-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0;
+}
+
+.mod-row + .mod-row {
+  border-top: 1px solid var(--border);
+}
+
+.mod-row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mod-raw {
+  font-size: 12.5px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 767.98px) {
@@ -2807,11 +2838,7 @@ button, input, select, textarea {
     border: 0;
   }
 
-  .mod-table td.mod-who {
-    display: flex;
-  }
-
-  .mod-table td[data-label]:not(.mod-who)::before {
+  .mod-table td[data-label]::before {
     content: attr(data-label) ": ";
     color: var(--subtle);
     font-size: 12px;

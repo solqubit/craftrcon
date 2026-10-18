@@ -7,7 +7,8 @@
     "close": "Close",
     "dismiss": "Dismiss",
     "loading": "Loading…",
-    "retry": "Try again"
+    "retry": "Try again",
+    "commandSent": "Command sent."
   },
   "nav": {
     "label": "Sections",
@@ -393,9 +394,6 @@
       "invalid_count": "Enter a whole number from 1 to 6400.",
       "invalid_coords": "Enter a number, ~, ~5 or ^ in each box. ^ can't be mixed with the others.",
       "empty_message": "Type a message."
-    },
-    "toast": {
-      "sent": "Command sent."
     }
   },
   "moderation": {
@@ -478,15 +476,13 @@
     "confirm": {
       "unbanTitle": "Unban {name}?",
       "unban": "{name} will be able to join the server again.",
+      "unbanIp": "Connections from {ip} will be allowed again.",
       "removeTitle": "Remove {name} from the whitelist?",
       "remove": "{name} won't be able to join while the whitelist is on."
     },
     "errors": {
       "invalid_player": "This name can't be used in a command. Use a Minecraft name: letters, digits and _, up to 16.",
       "invalid_ip": "Enter a valid IP address, like 203.0.113.7."
-    },
-    "toast": {
-      "sent": "Command sent."
     }
   },
   "cmd": {

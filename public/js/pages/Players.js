@@ -4,19 +4,18 @@
 // The list is polled every 5 s while the tab is visible. Actions run through
 // POST /command with origin 'ui' (they go to the audit log, not to the console
 // history); the server's reply comes back as a toast. A command on the
-// configurable "dangerous" list asks for confirmation first.
-import { html, useEffect, useState } from '../../vendor/htm-preact.js';
+// configurable "dangerous" list asks for confirmation first (all of that lives
+// in useCommandRunner).
+import { html, useState } from '../../vendor/htm-preact.js';
 import { api } from '../api.js';
 import { t } from '../i18n.js';
-import { DEFAULT_DANGEROUS_COMMANDS } from '../data/dangerous.js';
 import { errorKey } from '../lib/console.js';
-import { isDangerous } from '../lib/dangerous.js';
 import { isValidPlayerName } from '../lib/names.js';
 import { playersView } from '../lib/dashboard.js';
 import { DIALOG_ACTIONS, buildAction } from '../lib/players.js';
 import { usePolling } from '../lib/polling.js';
 import { ActiveServer } from '../components/ActiveServer.js';
-import { Confirm } from '../components/Confirm.js';
+import { useCommandRunner } from '../components/CommandRunner.js';
 import { Empty } from '../components/Empty.js';
 import { Head } from '../components/Head.js';
 import { Icon } from '../components/Icon.js';
@@ -38,16 +37,8 @@ function PlayersView({ server }) {
   const id = server.id;
   const [data, setData] = useState(null); // the last /players answer
   const [error, setError] = useState(null); // code of the last failed load
-  const [dangerous, setDangerous] = useState(DEFAULT_DANGEROUS_COMMANDS);
   const [flow, setFlow] = useState(null); // { action, name }: a dialog is open
-  const [confirm, setConfirm] = useState(null); // the dangerous command awaiting a yes
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    api('/api/settings/dangerous-commands')
-      .then((list) => Array.isArray(list) && setDangerous(list))
-      .catch(() => {}); // keep the defaults: better one confirmation too many
-  }, []);
+  const { send: runCommand, busy, confirmDialog } = useCommandRunner(id);
 
   async function load(isCurrent = () => true) {
     try {
@@ -61,36 +52,13 @@ function PlayersView({ server }) {
   }
   usePolling(load, POLL_MS, [id]);
 
-  // Sends the command; closes the dialog and the confirmation when it went
-  // through, and keeps the dialog open (to try again) when it did not.
-  async function run(command) {
-    setBusy(true);
-    let sent = false;
-    try {
-      const result = await api(`/api/servers/${id}/command`, { method: 'POST', body: { command, origin: 'ui' } });
-      if (result.ok) {
-        sent = true;
-        const reply = typeof result.output === 'string' ? result.output.trim() : '';
-        if (reply) toast(html`<${McText} text=${reply} />`, { type: 'info' });
-        else toast(t('players.toast.sent'));
-      } else {
-        toast(t(errorKey(result.error)), { type: 'error' });
-      }
-    } catch (err) {
-      if (err.status !== 401) toast(t(errorKey(err.status === 404 ? 'not_found' : err.code)), { type: 'error' });
-    }
-    setBusy(false);
-    setConfirm(null);
-    if (sent) {
+  // Sends the command; the dialog closes when it went through and stays open
+  // (to try again) when it did not.
+  async function send(command) {
+    if (await runCommand(command)) {
       setFlow(null);
       load();
     }
-  }
-
-  // Runs `command` now, or after the user confirms when it is on the list.
-  function send(command) {
-    if (isDangerous(command, dangerous)) setConfirm(command);
-    else run(command);
   }
 
   function choose(action, name) {
@@ -168,18 +136,7 @@ function PlayersView({ server }) {
       onSubmit=${send}
       onClose=${() => setFlow(null)}
     />`}
-    ${confirm &&
-    html`<${Confirm}
-      title=${t('console.confirm.title')}
-      message=${html`<p class="confirm-message">${t('console.confirm.message')}</p>
-        <code class="cl-confirm-cmd">${confirm}</code>
-        <p class="hint">${t('console.confirm.hint')}</p>`}
-      confirmLabel=${t('console.confirm.run')}
-      danger
-      busy=${busy}
-      onConfirm=${() => run(confirm)}
-      onCancel=${() => setConfirm(null)}
-    />`}
+    ${confirmDialog}
   </div>`;
 }
 

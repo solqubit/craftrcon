@@ -3,27 +3,24 @@
 // ("#/moderation?tab=ips"), so a reload or a shared link keeps it.
 //
 // Lists come from GET /bans?type=players|ips and GET /whitelist and are
-// refetched after every change. Changes run through POST /command with origin
-// 'ui' (audit log, not console history); the server's reply comes back as a
-// toast. A command on the configurable "dangerous" list asks for confirmation
-// first, and removing an entry (unban, whitelist remove) always does. When the
+// refetched after every change. Changes run through useCommandRunner (POST
+// /command with origin 'ui', the reply as a toast, confirmation for commands on
+// the "dangerous" list); removing an entry (unban, whitelist remove) always
+// asks too. When the
 // server answers with text the panel can't parse ({ raw }), the text is shown
 // as is and the forms stay available.
 import { html, useEffect, useState } from '../../vendor/htm-preact.js';
 import { api } from '../api.js';
 import { t } from '../i18n.js';
-import { DEFAULT_DANGEROUS_COMMANDS } from '../data/dangerous.js';
 import { ban, banIp, deop, op, pardon, pardonIp, whitelistAdd, whitelistRemove, whitelistToggle } from '../lib/builders.js';
 import { errorKey } from '../lib/console.js';
-import { isDangerous } from '../lib/dangerous.js';
 import { MODERATION_TABS, filterBans, filterNames, listView, tabForKey, tabFromHash, tabHash } from '../lib/moderation.js';
 import { ActiveServer } from '../components/ActiveServer.js';
-import { Confirm } from '../components/Confirm.js';
+import { useCommandRunner } from '../components/CommandRunner.js';
 import { Empty } from '../components/Empty.js';
 import { Head } from '../components/Head.js';
 import { Icon } from '../components/Icon.js';
 import { McText } from '../components/McText.js';
-import { toast } from '../components/Toast.js';
 
 const MAX_REASON = 256; // well inside RCON's limit
 
@@ -89,7 +86,7 @@ function RawAnswer({ text }) {
   return html`<section class="card" aria-labelledby="mod-raw-title">
     <h2 id="mod-raw-title" class="card-title">${t('moderation.raw.title')}</h2>
     <p class="hint">${t('moderation.raw.hint')}</p>
-    <p class="dash-raw mono"><${McText} text=${text} /></p>
+    <p class="mod-raw mono"><${McText} text=${text} /></p>
   </section>`;
 }
 
@@ -223,6 +220,13 @@ function BansTab({ server, type, send }) {
     return sent;
   }
 
+  // An added entry may not match the filter and would look lost: clear it.
+  async function add(command) {
+    const sent = await mutate(command);
+    if (sent) setQuery('');
+    return sent;
+  }
+
   const form = ips
     ? html`<${AddForm}
         id="mod-ban-ip"
@@ -232,7 +236,7 @@ function BansTab({ server, type, send }) {
         nameHint=${t('moderation.ips.targetHint')}
         withReason
         submit=${{ label: t('moderation.ips.submit'), danger: true, build: (target, reason) => banIp(target, reason) }}
-        send=${mutate}
+        send=${add}
       />`
     : html`<${AddForm}
         id="mod-ban"
@@ -241,10 +245,15 @@ function BansTab({ server, type, send }) {
         namePlaceholder="Steve"
         withReason
         submit=${{ label: t('moderation.bans.submit'), danger: true, build: (name, reason) => ban(name, reason) }}
-        send=${mutate}
+        send=${add}
       />`;
 
   const view = data === null ? null : listView(data, 'entries');
+  const total = view?.kind === 'list' ? view.items.length : null;
+  // Nothing left to filter: drop the filter, so the next entries show up.
+  useEffect(() => {
+    if (total === 0) setQuery('');
+  }, [total]);
   let body;
   if (data === null && error === null) body = html`<${Loading} />`;
   else if (data === null) body = html`<${LoadFailed} error=${error} onRetry=${retry} />`;
@@ -280,9 +289,11 @@ function BansTab({ server, type, send }) {
                 ${entries.map((entry, i) => {
                   const command = tryBuild(() => (ips ? pardonIp(entry.target) : pardon(entry.target)));
                   return html`<tr key=${`${i}:${entry.target}`}>
-                    <td class="mod-who" data-label=${ips ? t('moderation.address') : t('moderation.player')}>
-                      ${!ips && html`<${Head} name=${entry.target} size=${24} />`}
-                      <span class=${ips ? 'mono' : undefined}>${entry.target}</span>
+                    <td class="mod-name">
+                      <div class="mod-who">
+                        ${!ips && html`<${Head} name=${entry.target} size=${24} />`}
+                        <span class=${ips ? 'mono' : undefined}>${entry.target}</span>
+                      </div>
                     </td>
                     <td data-label=${t('moderation.source')}>${entry.source}</td>
                     <td class="mod-reason" data-label=${t('moderation.reasonColumn')}>
@@ -297,7 +308,9 @@ function BansTab({ server, type, send }) {
                         onClick=${() =>
                           mutate(command, {
                             title: t('moderation.confirm.unbanTitle', { name: entry.target }),
-                            message: t('moderation.confirm.unban', { name: entry.target }),
+                            message: ips
+                              ? t('moderation.confirm.unbanIp', { ip: entry.target })
+                              : t('moderation.confirm.unban', { name: entry.target }),
                             label: t('moderation.actions.unban'),
                           })}
                       >
@@ -330,6 +343,12 @@ function WhitelistTab({ server, send }) {
     return sent;
   }
 
+  async function add(command) {
+    const sent = await mutate(command);
+    if (sent) setQuery('');
+    return sent;
+  }
+
   async function toggle(on) {
     setToggling(true);
     await send(whitelistToggle(on));
@@ -337,6 +356,10 @@ function WhitelistTab({ server, send }) {
   }
 
   const view = data === null ? null : listView(data, 'players');
+  const total = view?.kind === 'list' ? view.items.length : null;
+  useEffect(() => {
+    if (total === 0) setQuery('');
+  }, [total]);
   let body;
   if (data === null && error === null) body = html`<${Loading} />`;
   else if (data === null) body = html`<${LoadFailed} error=${error} onRetry=${retry} />`;
@@ -358,12 +381,12 @@ function WhitelistTab({ server, send }) {
       />
       ${names.length === 0
         ? html`<p class="mod-nomatch">${t('moderation.filter.none', { query: query.trim() })}</p>`
-        : html`<ul class="pl-list mod-names">
+        : html`<ul class="mod-list">
             ${names.map((name) => {
               const command = tryBuild(() => whitelistRemove(name));
-              return html`<li key=${name} class="pl-row">
+              return html`<li key=${name} class="mod-row">
                 <${Head} name=${name} size=${28} />
-                <span class="pl-name">${name}</span>
+                <span class="mod-row-name">${name}</span>
                 <button
                   type="button"
                   class="btn btn-secondary btn-sm"
@@ -400,7 +423,7 @@ function WhitelistTab({ server, send }) {
       nameLabel=${t('moderation.player')}
       namePlaceholder="Steve"
       submit=${{ label: t('moderation.whitelist.submit'), build: (name) => whitelistAdd(name) }}
-      send=${mutate}
+      send=${add}
     />
     ${error !== null && data !== null && html`<${RefreshWarning} error=${error} />`}
     ${body}
@@ -452,17 +475,8 @@ function Tabs({ tab, onSelect }) {
 }
 
 function ModerationView({ server }) {
-  const id = server.id;
   const [tab, setTab] = useState(() => tabFromHash(location.hash));
-  const [dangerous, setDangerous] = useState(DEFAULT_DANGEROUS_COMMANDS);
-  const [confirm, setConfirm] = useState(null); // { command, ask, resolve }
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    api('/api/settings/dangerous-commands')
-      .then((list) => Array.isArray(list) && setDangerous(list))
-      .catch(() => {}); // keep the defaults: better one confirmation too many
-  }, []);
+  const { send, confirmDialog } = useCommandRunner(server.id);
 
   // Back/forward and the sidebar link change the hash without a remount.
   useEffect(() => {
@@ -476,56 +490,12 @@ function ModerationView({ server }) {
     history.replaceState(null, '', tabHash(next)); // no history entry, no hashchange
   }
 
-  // Sends the command; true when the server took it.
-  async function execute(command) {
-    setBusy(true);
-    let sent = false;
-    try {
-      const result = await api(`/api/servers/${id}/command`, { method: 'POST', body: { command, origin: 'ui' } });
-      if (result.ok) {
-        sent = true;
-        const reply = typeof result.output === 'string' ? result.output.trim() : '';
-        if (reply) toast(html`<${McText} text=${reply} />`, { type: 'info' });
-        else toast(t('moderation.toast.sent'));
-      } else {
-        toast(t(errorKey(result.error)), { type: 'error' });
-      }
-    } catch (err) {
-      if (err.status !== 401) toast(t(errorKey(err.status === 404 ? 'not_found' : err.code)), { type: 'error' });
-    }
-    setBusy(false);
-    return sent;
-  }
-
-  // Resolves true once the command went through, false when it failed or the
-  // user said no. A command on the dangerous list asks first; `ask` ({ title,
-  // message, label, danger }) makes any other command ask too.
-  function send(command, ask) {
-    return new Promise((resolve) => {
-      if (isDangerous(command, dangerous) || ask) setConfirm({ command, ask: isDangerous(command, dangerous) ? null : ask, resolve });
-      else execute(command).then(resolve);
-    });
-  }
-
-  async function confirmed() {
-    const pending = confirm;
-    const sent = await execute(pending.command);
-    setConfirm(null);
-    pending.resolve(sent);
-  }
-
-  function cancelled() {
-    confirm.resolve(false);
-    setConfirm(null);
-  }
-
   let panel;
   if (tab === 'bans') panel = html`<${BansTab} key="bans" server=${server} type="players" send=${send} />`;
   else if (tab === 'ips') panel = html`<${BansTab} key="ips" server=${server} type="ips" send=${send} />`;
   else if (tab === 'whitelist') panel = html`<${WhitelistTab} key="whitelist" server=${server} send=${send} />`;
   else panel = html`<${OpsTab} key="ops" send=${send} />`;
 
-  const ask = confirm?.ask;
   return html`<div class="page mod">
     <header class="page-head">
       <div>
@@ -535,28 +505,7 @@ function ModerationView({ server }) {
     </header>
     <${Tabs} tab=${tab} onSelect=${select} />
     <div role="tabpanel" id="mod-panel" aria-labelledby=${`mod-tab-${tab}`}>${panel}</div>
-    ${confirm &&
-    (ask
-      ? html`<${Confirm}
-          title=${ask.title}
-          message=${ask.message}
-          confirmLabel=${ask.label}
-          danger=${Boolean(ask.danger)}
-          busy=${busy}
-          onConfirm=${confirmed}
-          onCancel=${cancelled}
-        />`
-      : html`<${Confirm}
-          title=${t('console.confirm.title')}
-          message=${html`<p class="confirm-message">${t('console.confirm.message')}</p>
-            <code class="cl-confirm-cmd">${confirm.command}</code>
-            <p class="hint">${t('console.confirm.hint')}</p>`}
-          confirmLabel=${t('console.confirm.run')}
-          danger
-          busy=${busy}
-          onConfirm=${confirmed}
-          onCancel=${cancelled}
-        />`)}
+    ${confirmDialog}
   </div>`;
 }
 

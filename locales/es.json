@@ -7,7 +7,8 @@
     "close": "Cerrar",
     "dismiss": "Descartar",
     "loading": "Cargando…",
-    "retry": "Reintentar"
+    "retry": "Reintentar",
+    "commandSent": "Comando enviado."
   },
   "nav": {
     "label": "Secciones",
@@ -344,7 +345,7 @@
       "teleport": "Teletransportar…",
       "give": "Dar ítem…",
       "tell": "Enviar mensaje…",
-      "whitelistAdd": "Añadir a la whitelist",
+      "whitelistAdd": "Agregar a la whitelist",
       "whitelistRemove": "Quitar de la whitelist"
     },
     "modes": {
@@ -393,9 +394,6 @@
       "invalid_count": "Escribe un número entero de 1 a 6400.",
       "invalid_coords": "Escribe un número, ~, ~5 o ^ en cada casilla. ^ no se puede mezclar con los demás.",
       "empty_message": "Escribe un mensaje."
-    },
-    "toast": {
-      "sent": "Comando enviado."
     }
   },
   "moderation": {
@@ -453,18 +451,18 @@
       "toggleHint": "Mientras está activada, solo pueden entrar los jugadores de la lista. El panel no puede saber si está activada ahora.",
       "on": "Activar",
       "off": "Desactivar",
-      "addTitle": "Añadir un jugador",
-      "submit": "Añadir",
+      "addTitle": "Agregar un jugador",
+      "submit": "Agregar",
       "listTitle": "Jugadores en la whitelist",
       "filter": "Filtrar por nombre",
       "empty": {
         "title": "La whitelist está vacía",
-        "message": "Los jugadores que añadas aparecerán aquí."
+        "message": "Los jugadores que agregues aparecerán aquí."
       }
     },
     "ops": {
       "title": "Operadores",
-      "hint": "Minecraft no permite listar los operadores por RCON, así que no se pueden mostrar aquí. Igual puedes añadir o quitar uno por su nombre.",
+      "hint": "Minecraft no permite listar los operadores por RCON, así que no se pueden mostrar aquí. Igual puedes agregar o quitar uno por su nombre.",
       "add": "Hacer operador",
       "remove": "Quitar operador"
     },
@@ -478,15 +476,13 @@
     "confirm": {
       "unbanTitle": "¿Quitar el ban a {name}?",
       "unban": "{name} podrá volver a entrar al servidor.",
+      "unbanIp": "Se volverán a permitir las conexiones desde {ip}.",
       "removeTitle": "¿Quitar a {name} de la whitelist?",
       "remove": "{name} no podrá entrar mientras la whitelist esté activada."
     },
     "errors": {
       "invalid_player": "Este nombre no se puede usar en un comando. Usa un nombre de Minecraft: letras, números y _, hasta 16.",
       "invalid_ip": "Escribe una dirección IP válida, como 203.0.113.7."
-    },
-    "toast": {
-      "sent": "Comando enviado."
     }
   },
   "cmd": {
