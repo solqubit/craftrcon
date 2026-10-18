@@ -7,14 +7,14 @@ herramientas de jugadores y moderación, controles del mundo y tareas programada
 cualquier servidor Linux con dos comandos y funciona por su cuenta: solo se comunica con tus servidores
 de Minecraft por red.
 
-![Dashboard](docs/screenshots/dashboard.png)
+![Inicio](docs/screenshots/dashboard.png)
 
 - **Servidores:** agrega, edita y elimina servidores desde el panel, con un botón "Probar conexión". El
   instalador no configura ningún servidor.
 - **Consola:** salida con colores (códigos `§` y `&`), autocompletado de comandos vanilla y de los
   nombres de los jugadores conectados, historial y favoritos por servidor, filtro y exportación, y una
   confirmación para los comandos peligrosos (`stop`, `op`, `ban-ip`, ...; la lista es editable).
-- **Dashboard:** jugadores, versión y software, ping, TPS (Paper, Spigot y Purpur), el MOTD, un gráfico
+- **Inicio (dashboard):** jugadores, versión y software, ping, TPS (Paper, Spigot y Purpur), el MOTD, un gráfico
   de jugadores en el tiempo (24 horas o 7 días) y los jugadores conectados con su cabeza de skin.
 - **Jugadores y Moderación:** kick, ban, op, gamemode, teleport, give, mensajes privados, whitelist, y
   bans e IP bans con su motivo.
@@ -29,12 +29,12 @@ de Minecraft por red.
 - **Sin CDNs:** la interfaz no carga nada de internet y funciona en una red sin salida (las cabezas de
   skin tienen una cabeza genérica de respaldo).
 
-| Consola | Servidores | Ajustes |
+| Consola | Servidores | Configuración |
 | --- | --- | --- |
-| ![Consola](docs/screenshots/console.png) | ![Servidores](docs/screenshots/servers.png) | ![Ajustes](docs/screenshots/settings.png) |
+| ![Consola](docs/screenshots/console.png) | ![Servidores](docs/screenshots/servers.png) | ![Configuración](docs/screenshots/settings.png) |
 
 (Las capturas muestran la interfaz en inglés, que es el idioma por defecto; se cambia con el selector
-EN/ES de la esquina superior derecha o en Settings.)
+EN/ES de la esquina superior derecha o en Configuración.)
 
 ## Qué necesitas
 
@@ -53,7 +53,8 @@ EN/ES de la esquina superior derecha o en Settings.)
 
 | Nivel | Distribuciones |
 | --- | --- |
-| Probadas | Debian 12 y 13, Ubuntu 22.04 y 24.04, Rocky Linux y AlmaLinux 9, Fedora (el CI ejecuta una instalación y una actualización reales en contenedores de Debian 12, Ubuntu 24.04, Rocky Linux 9 y Fedora) |
+| Probadas en CI (instalación y actualización reales en un contenedor) | Debian 12, Ubuntu 24.04, Rocky Linux 9, Fedora |
+| Deberían funcionar (sin prueba en CI) | Debian 13, Ubuntu 22.04, AlmaLinux 9 |
 | Mejor esfuerzo | openSUSE, Arch Linux, Alpine |
 
 El instalador detecta la distribución con `/etc/os-release`, y si algo no es compatible lo dice y se
@@ -69,8 +70,8 @@ rcon.port=25575
 rcon.password=elige-una-clave-larga-y-aleatoria
 ```
 
-Luego agrega el servidor en el panel (Servers, "Add server") con el mismo host, puerto RCON y contraseña, y
-pulsa "Test connection". El panel también pide el puerto del juego (25565 por defecto): lo usa para el
+Luego agrega el servidor en el panel (Servidores, "Agregar servidor") con el mismo host, puerto RCON y contraseña, y
+pulsa "Probar conexión". El panel también pide el puerto del juego (25565 por defecto): lo usa para el
 estado, la versión, el MOTD y los jugadores, que salen del Server List Ping y no necesitan RCON.
 
 > **No expongas el puerto RCON a internet.** Quien lo alcance y conozca la contraseña puede ejecutar
@@ -97,8 +98,10 @@ Al terminar muestra la dirección del panel, por ejemplo `http://203.0.113.10:80
 instalador habla en español. Para instalaciones sin preguntas, mira `./install.sh --help`
 (`--non-interactive` lee `CRAFTRCON_PASSWORD`, `CRAFTRCON_PORT` y `CRAFTRCON_DOMAIN`).
 
-Qué hace, en resumen: instala solo los paquetes del sistema que falten (`git`, `curl`, `tar`), descarga el
-Node.js oficial en una carpeta privada (verifica su SHA-256; nunca toca un Node del sistema), copia la
+Qué hace, en resumen: instala solo los paquetes del sistema que falten entre `curl`, `tar`, `xz` y
+`ca-certificates` (o sus equivalentes en tu distribución; nunca instala `git`). En la mayoría de las
+distribuciones descarga el Node.js oficial en una carpeta privada, `/opt/craftrcon/node` (verifica su
+SHA-256; nunca toca un Node del sistema); en Alpine usa el paquete `nodejs` del sistema. Copia la
 aplicación a `/opt/craftrcon`, crea el usuario de sistema `craftrcon`, guarda los datos en
 `/var/lib/craftrcon` y la configuración en `/etc/craftrcon/config.json`, y crea y arranca un servicio
 systemd u OpenRC que se inicia con la máquina. Después puedes borrar la carpeta que clonaste.
@@ -140,7 +143,7 @@ migraciones de la base de datos se aplican solas al iniciar. **Si la versión nu
 sola la versión anterior y el respaldo** y te explica qué pasó. Nunca toca tu clave, la clave de cifrado,
 tus servidores guardados ni la configuración (puerto, dominio).
 
-La página Settings muestra la versión instalada y, si la máquina tiene internet, si hay una más nueva en
+La página Configuración muestra la versión instalada y, si la máquina tiene internet, si hay una más nueva en
 `main`. Solo informa; la actualización siempre se hace con `./update.sh`.
 
 ## Cambiar la clave, reparar, desinstalar
@@ -155,7 +158,7 @@ sudo ./install.sh                      # con el panel instalado: menú para camb
                                        # reparar el servicio o desinstalar
 ```
 
-También puedes cambiar la clave desde Settings con la sesión iniciada. `--uninstall` conserva tus datos
+También puedes cambiar la clave desde Configuración con la sesión iniciada. `--uninstall` conserva tus datos
 (`/var/lib/craftrcon`, con la base de datos y la clave de cifrado) y los respaldos de actualización, salvo
 que respondas que sí al borrado o uses `--purge`. Si la copia desde la que ejecutas `./install.sh` es más
 nueva que la versión instalada, el menú ofrece ejecutar `./update.sh`.
@@ -167,8 +170,8 @@ hacer:
 
 - **Sin chat ni registro en vivo del servidor.** RCON solo devuelve la respuesta de cada comando que
   envías. El chat, las entradas, las muertes y otros eventos del servidor no aparecen en la consola, y no
-  hay una pestaña "Live log". El panel nunca lee archivos de la máquina de Minecraft.
-- **Sin lista de operadores.** RCON vanilla no tiene un comando para listar los ops. Moderation permite
+  hay una pestaña de registro en vivo. El panel nunca lee archivos de la máquina de Minecraft.
+- **Sin lista de operadores.** RCON vanilla no tiene un comando para listar los ops. Moderación permite
   hacer `op` y `deop` a jugadores, pero no puede mostrar quién ya lo es.
 - **No puede iniciar el servidor.** RCON solo llega a un servidor que ya está en marcha. `stop` funciona
   como comando, pero el panel no puede iniciar, crear ni reiniciar el proceso de Minecraft (usa tu gestor
@@ -178,7 +181,7 @@ hacer:
 - **TPS** solo se muestra cuando existe el comando `tps` (Paper, Spigot, Purpur).
 
 Como el panel es independiente de la máquina de Minecraft y solo usa la red (RCON y Server List Ping),
-"Offline" significa que el panel no puede alcanzar el servidor, no necesariamente que el servidor esté
+"Fuera de línea" significa que el panel no puede alcanzar el servidor, no necesariamente que el servidor esté
 caído. Cambiar el host o el puerto RCON de un servidor guardado exige escribir otra vez su contraseña
 RCON, para que la contraseña guardada nunca se envíe a otra dirección.
 
@@ -191,7 +194,7 @@ no.
   sistema `craftrcon`, sin privilegios, no como root, y (con systemd) con `NoNewPrivileges`, un sistema de
   archivos de solo lectura salvo su carpeta de datos y un `/tmp` privado.
 - **Sesiones:** cookie `HttpOnly` y `SameSite=Strict` (también `Secure` cuando hay dominio con HTTPS),
-  expira tras 7 días sin uso, con botón "Log out".
+  expira tras 7 días sin uso, con botón "Cerrar sesión".
 - **Fuerza bruta:** los intentos de inicio de sesión se limitan por IP, con un bloqueo temporal que se
   alarga en cada bloqueo repetido.
 - **CSRF:** `SameSite=Strict` más una verificación de `Origin` en cada petición que modifica datos.
@@ -221,8 +224,8 @@ público.
   (OpenRC).
 - Estado del servicio: `systemctl status craftrcon` (systemd) o `rc-service craftrcon status` (OpenRC).
 - Olvidaste la clave: `sudo ./install.sh --reset-password`.
-- "Connection refused" al probar un servidor: RCON está apagado (`enable-rcon=true`), el puerto es otro o
-  un firewall lo bloquea. "Wrong password": debe coincidir con `rcon.password`.
+- "Conexión rechazada" al probar un servidor: RCON está apagado (`enable-rcon=true`), el puerto es otro o
+  un firewall lo bloquea. "Contraseña RCON incorrecta": debe coincidir con `rcon.password`.
 
 ## Desarrollo
 

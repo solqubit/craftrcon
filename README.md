@@ -47,7 +47,8 @@ with two commands and runs on its own: it only talks to your Minecraft servers o
 
 | Level | Distributions |
 | --- | --- |
-| Tested | Debian 12 and 13, Ubuntu 22.04 and 24.04, Rocky Linux and AlmaLinux 9, Fedora (the CI runs a real install and update in containers of Debian 12, Ubuntu 24.04, Rocky Linux 9 and Fedora) |
+| Tested in CI (a real install and update in a container) | Debian 12, Ubuntu 24.04, Rocky Linux 9, Fedora |
+| Expected to work (not tested in CI) | Debian 13, Ubuntu 22.04, AlmaLinux 9 |
 | Best effort | openSUSE, Arch Linux, Alpine |
 
 The installer detects the distribution through `/etc/os-release`, and if something is not supported it
@@ -92,8 +93,10 @@ When it finishes it prints the address of the panel, for example `http://203.0.1
 `./install.sh --help` (`--non-interactive` reads `CRAFTRCON_PASSWORD`, `CRAFTRCON_PORT` and
 `CRAFTRCON_DOMAIN`).
 
-What it does, in short: installs only the missing system packages (`git`, `curl`, `tar`), downloads the
-official Node.js into a private folder (SHA-256 verified; it never touches a Node of your system),
+What it does, in short: installs only the system packages that are missing among `curl`, `tar`, `xz` and
+`ca-certificates` (or their equivalents in your distribution; it never installs `git`). On most
+distributions it downloads the official Node.js into a private folder, `/opt/craftrcon/node` (SHA-256
+verified; it never touches a Node of your system); on Alpine it uses the system `nodejs` package. It
 copies the application to `/opt/craftrcon`, creates the `craftrcon` system user, keeps the data in
 `/var/lib/craftrcon` and the configuration in `/etc/craftrcon/config.json`, and creates and starts a
 systemd or OpenRC service that starts with the machine. The folder you cloned can be deleted afterwards.
@@ -212,7 +215,7 @@ Found a vulnerability? Please report it privately to the maintainers instead of 
 - Service status: `systemctl status craftrcon` (systemd) or `rc-service craftrcon status` (OpenRC).
 - Forgot the password: `sudo ./install.sh --reset-password`.
 - "Connection refused" when testing a server: RCON is off (`enable-rcon=true`), the port is wrong, or a
-  firewall blocks it. "Wrong password": it must match `rcon.password`.
+  firewall blocks it. "Wrong RCON password": it must match `rcon.password`.
 
 ## Development
 

@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Unit and integration tests of the panel on the oldest supported Node and the latest LTS line.
@@ -31,18 +31,22 @@ jobs:
       - run: npm test
 
   # ShellCheck on every shell script, then the shell unit tests (no containers needed).
+  # ShellCheck is pinned (image tag and digest): the apt package of ubuntu-latest is an older
+  # release with different findings.
   shell:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - name: ShellCheck
-        run: shellcheck install.sh update.sh scripts/*.sh scripts/lib/*.sh test/shell/*.sh
+        run: |
+          docker run --rm -v "$PWD:/mnt" -w /mnt \n            koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d \n            install.sh update.sh scripts/*.sh scripts/lib/*.sh test/shell/*.sh
       - name: Shell unit tests
         run: npm run test:shell
 
   # Real installs and updates inside a container of each tested distro.
   install:
+    needs: [test, shell]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -66,7 +70,11 @@ jobs:
       - name: VERSION must be higher than on main
         run: |
           set -euo pipefail
-          git fetch --no-tags --depth=1 origin main
+          git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+          if ! git cat-file -e origin/main:VERSION 2>/dev/null; then
+            echo "::notice::main has no VERSION file yet, so there is nothing to compare with."
+            exit 0
+          fi
           base="$(git show origin/main:VERSION | tr -d '[:space:]')"
           head="$(tr -d '[:space:]' < VERSION)"
           # shellcheck source=scripts/lib/common.sh
@@ -91,4 +99,10 @@ jobs:
       - run: npm ci
       - run: npm run vendor
       - name: public/vendor matches the lockfile
-        run: git diff --exit-code public/vendor
+        run: |
+          git diff --exit-code public/vendor
+          if [ -n "$(git status --porcelain public/vendor)" ]; then
+            git status --short public/vendor
+            echo "::error::public/vendor differs from what npm run vendor produces (untracked or changed files)."
+            exit 1
+          fi
