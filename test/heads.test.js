@@ -49,6 +49,7 @@ test('the first call downloads, the second comes from the cache', async (t) => {
   assert.equal(fetchImpl.calls.length, 1);
   assert.equal(fetchImpl.calls[0].url, HEAD_SOURCE('Notch'));
   assert.ok(fetchImpl.calls[0].init.signal instanceof AbortSignal);
+  assert.equal(fetchImpl.calls[0].init.redirect, 'error');
   assert.deepEqual(readdirSync(dir), ['notch.png']);
 });
 
@@ -80,6 +81,29 @@ test('rejects non-ok, non-PNG and oversized responses without caching them', asy
     assert.deepEqual(await heads.get('Notch'), { type: 'fallback' });
   }
   assert.deepEqual(readdirSync(dir), []);
+});
+
+test('releases the body of every response rejected before reading', async (t) => {
+  const dir = tempDir(t);
+  const cases = [
+    { status: 404, headers: { 'content-type': 'image/png' } },
+    { status: 200, headers: { 'content-type': 'text/html' } },
+    { status: 200, headers: { 'content-type': 'image/png', 'content-length': String(256 * 1024 + 1) } },
+  ];
+  for (const init of cases) {
+    let cancelled = false;
+    const body = new ReadableStream({
+      pull(controller) {
+        controller.enqueue(new Uint8Array(8));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const heads = createHeads({ dir, fetchImpl: async () => new Response(body, init) });
+    assert.deepEqual(await heads.get('Notch'), { type: 'fallback' });
+    assert.equal(cancelled, true, JSON.stringify(init));
+  }
 });
 
 test('accepts a body of exactly 256 KiB', async (t) => {
@@ -137,8 +161,9 @@ test('a fresh entry honours ttlMs', async (t) => {
   assert.equal(fetchImpl.calls.length, 2);
 });
 
-async function setup(t, headsFetch) {
-  const ctx = await makeApp({ headsFetch });
+async function setup(t, fetchImpl) {
+  const heads = createHeads({ dir: tempDir(t), fetchImpl });
+  const ctx = await makeApp({ services: { heads } });
   t.after(() => ctx.app.close());
   const headers = await ctx.login();
   const call = (name) =>
@@ -175,7 +200,7 @@ test('malicious or malformed names get 400 without touching disk or network', as
     serviceCalls += 1;
     return original(...args);
   };
-  for (const name of ['../../etc/passwd', 'a'.repeat(17), 'bad name', '..%2f..%2fx', 'a.b']) {
+  for (const name of ['../../etc/passwd', 'a'.repeat(17), 'a'.repeat(300), 'bad name', '..%2f..%2fx', 'a.b', 'a/b', '']) {
     const res = await call(name);
     assert.equal(res.statusCode, 400, name);
     assert.deepEqual(res.json(), { error: 'invalid_name' });

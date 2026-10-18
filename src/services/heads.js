@@ -8,21 +8,27 @@ export const HEAD_SOURCE = (name) => `https://mc-heads.net/avatar/${name}/32`;
 const FETCH_TIMEOUT_MS = 3000;
 const MAX_BYTES = 256 * 1024;
 
-// Reads the body, giving up as soon as it exceeds MAX_BYTES. Resolves null for
-// anything that is not an acceptable PNG response.
+const discard = (response) => response.body?.cancel().catch(() => {});
+
+// Reads the body, giving up as soon as it exceeds MAX_BYTES (leaving the
+// loop cancels the stream). Resolves null for anything that is not an
+// acceptable PNG response, after releasing its body.
 async function readPng(response) {
-  if (!response.ok) return null;
-  if (!response.headers.get('content-type')?.toLowerCase().startsWith('image/png')) return null;
   const declared = Number(response.headers.get('content-length'));
-  if (declared > MAX_BYTES || !response.body) return null;
+  if (
+    !response.ok ||
+    !response.headers.get('content-type')?.toLowerCase().startsWith('image/png') ||
+    declared > MAX_BYTES ||
+    !response.body
+  ) {
+    await discard(response);
+    return null;
+  }
   const chunks = [];
   let size = 0;
   for await (const chunk of response.body) {
     size += chunk.length;
-    if (size > MAX_BYTES) {
-      await response.body.cancel().catch(() => {});
-      return null;
-    }
+    if (size > MAX_BYTES) return null;
     chunks.push(chunk);
   }
   return size > 0 ? Buffer.concat(chunks) : null;
@@ -37,7 +43,10 @@ export function createHeads({ dir, fetchImpl = fetch, ttlMs = 24 * 3600e3 }) {
 
   async function download(name) {
     try {
-      const response = await fetchImpl(HEAD_SOURCE(name), { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+      const response = await fetchImpl(HEAD_SOURCE(name), {
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        redirect: 'error', // a redirecting upstream must not send the request elsewhere
+      });
       return await readPng(response);
     } catch {
       return null;
