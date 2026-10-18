@@ -14,6 +14,8 @@ export function createSessions(db, { idleMs = DEFAULT_IDLE_MS, now = Date.now } 
   const touch = db.prepare('UPDATE sessions SET last_seen = ? WHERE id_hash = ?');
   const remove = db.prepare('DELETE FROM sessions WHERE id_hash = ?');
   const removeAll = db.prepare('DELETE FROM sessions');
+  const removeOthers = db.prepare('DELETE FROM sessions WHERE id_hash != ?');
+  const removeIdle = db.prepare('DELETE FROM sessions WHERE last_seen < ?');
 
   function create() {
     const token = randomBytes(32).toString('base64url');
@@ -45,5 +47,19 @@ export function createSessions(db, { idleMs = DEFAULT_IDLE_MS, now = Date.now } 
     removeAll.run();
   }
 
-  return { create, validate, destroy, destroyAll };
+  // Signs out every client except the one holding `token` (password change).
+  function destroyAllExcept(token) {
+    if (typeof token !== 'string' || token === '') {
+      removeAll.run();
+      return;
+    }
+    removeOthers.run(hashToken(token));
+  }
+
+  // Drops sessions idle past the idle limit, so abandoned ones don't pile up.
+  function purgeIdle() {
+    return Number(removeIdle.run(now() - idleMs).changes);
+  }
+
+  return { create, validate, destroy, destroyAll, destroyAllExcept, purgeIdle };
 }

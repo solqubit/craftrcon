@@ -9,20 +9,24 @@ export function createAudit(db, { now = Date.now } = {}) {
   }
 
   // Newest first. `before` is a row id cursor: only rows with id < before.
+  // `server_name` is null when the row has no server.
   function list({ serverId, limit = 100, before } = {}) {
     const where = [];
     const params = [];
     if (serverId !== undefined && serverId !== null) {
-      where.push('server_id = ?');
+      where.push('a.server_id = ?');
       params.push(serverId);
     }
     if (before !== undefined && before !== null) {
-      where.push('id < ?');
+      where.push('a.id < ?');
       params.push(before);
     }
     const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const rows = db
-      .prepare(`SELECT id, ts, server_id, origin, action, detail, ok, result FROM audit ${clause} ORDER BY id DESC LIMIT ?`)
+      .prepare(
+        `SELECT a.id, a.ts, a.server_id, s.name AS server_name, a.origin, a.action, a.detail, a.ok, a.result
+         FROM audit a LEFT JOIN servers s ON s.id = a.server_id ${clause} ORDER BY a.id DESC LIMIT ?`,
+      )
       .all(...params, limit);
     return rows.map((r) => ({ ...r, ok: r.ok === 1 }));
   }

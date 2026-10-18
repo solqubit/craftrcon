@@ -14,6 +14,8 @@ import { createStatus } from './services/status.js';
 import { createSampler } from './services/sampler.js';
 import { createHeads } from './services/heads.js';
 import { createScheduler } from './services/scheduler.js';
+import { createUpdateCheck } from './services/updateCheck.js';
+import { createMaintenance } from './services/maintenance.js';
 import { ConnectionManager } from './minecraft/connection.js';
 
 const config = loadConfig();
@@ -25,6 +27,7 @@ const key = loadOrCreateKey(join(dataDir, 'secret.key'));
 const servers = createServers(db, key);
 const manager = new ConnectionManager((id) => servers.credentials(id));
 const audit = createAudit(db);
+const sessions = createSessions(db);
 const hub = createHub();
 const commands = createCommands({ db, manager, audit, hub });
 const status = createStatus({ servers, commands });
@@ -34,7 +37,8 @@ const app = buildApp({
   db,
   services: {
     settings: createSettings(db),
-    sessions: createSessions(db),
+    sessions,
+    updateCheck: createUpdateCheck({ current: config.version }),
     audit,
     servers,
     manager,
@@ -48,6 +52,7 @@ const sampler = createSampler({ db, servers, status, hub, log: app.log });
 app.services.sampler = sampler;
 const scheduler = createScheduler({ db, commands, audit, log: app.log });
 app.services.scheduler = scheduler;
+const maintenance = createMaintenance({ audit, sessions, log: app.log });
 
 let shuttingDown = false;
 async function shutdown() {
@@ -55,6 +60,7 @@ async function shutdown() {
   shuttingDown = true;
   sampler.stop();
   scheduler.stop();
+  maintenance.stop();
   manager.closeAll();
   try {
     await app.close();
@@ -76,3 +82,4 @@ try {
 }
 sampler.start();
 scheduler.start();
+maintenance.start();
