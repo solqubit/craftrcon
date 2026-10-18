@@ -8,6 +8,8 @@ import { createSessions } from './security/sessions.js';
 import { createSettings } from './services/settings.js';
 import { createAudit } from './services/audit.js';
 import { createServers } from './services/servers.js';
+import { createHub } from './services/hub.js';
+import { createCommands } from './services/commands.js';
 import { ConnectionManager } from './minecraft/connection.js';
 
 const config = loadConfig();
@@ -18,6 +20,8 @@ const db = openDb(join(dataDir, 'craftrcon.db'));
 const key = loadOrCreateKey(join(dataDir, 'secret.key'));
 const servers = createServers(db, key);
 const manager = new ConnectionManager((id) => servers.credentials(id));
+const audit = createAudit(db);
+const hub = createHub();
 
 const app = buildApp({
   config,
@@ -25,9 +29,11 @@ const app = buildApp({
   services: {
     settings: createSettings(db),
     sessions: createSessions(db),
-    audit: createAudit(db),
+    audit,
     servers,
     manager,
+    hub,
+    commands: createCommands({ db, manager, audit, hub }),
   },
 });
 

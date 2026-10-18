@@ -11,11 +11,11 @@ import {
 const TEST_TIMEOUT_MS = 5000;
 const POSITIVE_INT = /^[1-9]\d{0,14}$/;
 
-const validation = (reply, fields) => reply.code(400).send({ error: 'validation', fields });
-const notFound = (reply) => reply.code(404).send({ error: 'not_found' });
+export const validation = (reply, fields) => reply.code(400).send({ error: 'validation', fields });
+export const notFound = (reply) => reply.code(404).send({ error: 'not_found' });
 
 // Parses a route id; sends the error response itself and returns null if bad.
-function parseId(raw, reply) {
+export function parseId(raw, reply) {
   if (!POSITIVE_INT.test(raw)) {
     validation(reply, { id: 'invalid' });
     return null;

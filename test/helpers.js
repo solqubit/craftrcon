@@ -7,6 +7,8 @@ import { createSettings } from '../src/services/settings.js';
 import { createSessions } from '../src/security/sessions.js';
 import { createAudit } from '../src/services/audit.js';
 import { createServers } from '../src/services/servers.js';
+import { createHub } from '../src/services/hub.js';
+import { createCommands } from '../src/services/commands.js';
 import { ConnectionManager } from '../src/minecraft/connection.js';
 
 export const TEST_HOST = 'panel.test';
@@ -21,12 +23,17 @@ export async function makeApp({ password = 'correct-horse-battery', config = {},
   const settings = createSettings(db);
   if (password) settings.set('admin_password_hash', await hashPassword(password));
   const servers = createServers(db, randomBytes(32));
+  const audit = createAudit(db);
+  const manager = new ConnectionManager((id) => servers.credentials(id));
+  const hub = createHub();
   const services = {
     settings,
     sessions: createSessions(db),
-    audit: createAudit(db),
+    audit,
     servers,
-    manager: new ConnectionManager((id) => servers.credentials(id)),
+    manager,
+    hub,
+    commands: createCommands({ db, manager, audit, hub }),
     ...extra,
   };
   const app = buildApp({ config: { ...loadConfig({}), ...config }, db, services });
