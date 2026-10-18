@@ -112,10 +112,12 @@ export class RconClient extends EventEmitter {
       });
       socket.on('close', () => this.#teardown(conn));
     });
-    this.#connecting = attempt.finally(() => {
-      this.#connecting = null;
+    const tracked = attempt.finally(() => {
+      // A newer connect() may already own the slot (teardown clears it early).
+      if (this.#connecting === tracked) this.#connecting = null;
     });
-    return this.#connecting;
+    this.#connecting = tracked;
+    return tracked;
   }
 
   // Runs one command and resolves with the complete response text. After the
@@ -200,7 +202,10 @@ export class RconClient extends EventEmitter {
     clearTimeout(conn.timer);
     const wasReady = conn.ready;
     conn.ready = false;
-    if (this.#conn === conn) this.#conn = null;
+    if (this.#conn === conn) {
+      this.#conn = null;
+      this.#connecting = null; // so close() then connect() starts a fresh attempt
+    }
     conn.socket.destroy();
     conn.rejectConnect?.(connectError ?? conn.error ?? new RconError('CLOSED', 'Connection closed'));
     conn.rejectConnect = null;

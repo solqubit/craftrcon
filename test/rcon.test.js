@@ -93,6 +93,30 @@ test('multi-byte characters split across packets are decoded intact', async () =
   });
 });
 
+test('a 100-byte packet boundary inside a multi-byte character is decoded intact', async () => {
+  // The fake cuts responses every 100 bytes. 'a' shifts every 2-byte 'ñ' to an
+  // odd offset, so the cut between bytes 99 and 100 lands inside a character.
+  const text = 'a' + 'ñ'.repeat(300);
+  const bytes = Buffer.from(text, 'utf8');
+  assert.equal(bytes[100] & 0xc0, 0x80, 'byte 100 must be a UTF-8 continuation byte');
+  await withFake({ split: true, handlers: { big: () => text } }, async (_fake, make) => {
+    const client = make();
+    await client.connect();
+    assert.equal(await client.exec('big'), text);
+  });
+});
+
+test('a 4-byte emoji split across packets is decoded intact', async () => {
+  const text = 'abc' + '😀'.repeat(100);
+  const bytes = Buffer.from(text, 'utf8');
+  assert.equal(bytes[100] & 0xc0, 0x80, 'byte 100 must be a UTF-8 continuation byte');
+  await withFake({ split: true, handlers: { big: () => text } }, async (_fake, make) => {
+    const client = make();
+    await client.connect();
+    assert.equal(await client.exec('big'), text);
+  });
+});
+
 test('a handler that never answers rejects with TIMEOUT in time, then the client closes', async () => {
   await withFake({ handlers: { hang: never } }, async (_fake, make) => {
     const client = make({ timeoutMs: 300 });
@@ -142,6 +166,28 @@ test('exec after close rejects with CLOSED and close emits once', async () => {
     client.close();
     assert.equal(closed, 1);
     await rejectsWith(client.exec('list'), 'CLOSED');
+  });
+});
+
+test('connect() right after close() starts a fresh connection', async () => {
+  await withFake({}, async (_fake, make) => {
+    const client = make();
+    await client.connect();
+    client.close();
+    await client.connect();
+    assert.match(await client.exec('list'), /players online/);
+  });
+});
+
+test('close() during connect fails that attempt and a following connect() starts afresh', async () => {
+  await withFake({}, async (_fake, make) => {
+    const client = make();
+    const first = client.connect();
+    client.close();
+    const second = client.connect(); // same tick: must not reuse the rejected attempt
+    await rejectsWith(first, 'CLOSED');
+    await second;
+    assert.match(await client.exec('list'), /players online/);
   });
 });
 
