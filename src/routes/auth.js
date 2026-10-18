@@ -4,6 +4,9 @@ import { createRateLimiter } from '../security/rateLimit.js';
 export const SESSION_COOKIE = 'craftrcon_sid';
 const COOKIE_MAX_AGE_S = 7 * 24 * 3600;
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+// The session token of a request's cookie, if any.
+export const sidOf = (app, request) => app.parseCookie(request.headers.cookie ?? '')[SESSION_COOKIE];
+
 // Routes opt out of the session check with `config: PUBLIC`.
 export const PUBLIC = Object.freeze({ public: true });
 
@@ -32,7 +35,9 @@ export function originAllowed(request, config) {
 // hook covers every route added later, whatever plugin scope it lives in.
 export function registerAuth(app) {
   const { config } = app;
-  const limiter = app.services.rateLimiter ?? createRateLimiter();
+  // Shared with the password-change route, so guesses of the current password
+  // count against the same per-IP budget as login attempts.
+  const limiter = (app.services.rateLimiter ??= createRateLimiter());
 
   const cookieOptions = {
     path: '/',
@@ -40,8 +45,6 @@ export function registerAuth(app) {
     sameSite: 'strict',
     secure: Boolean(config.domain),
   };
-
-  const sidOf = (request) => app.parseCookie(request.headers.cookie ?? '')[SESSION_COOKIE];
 
   // Decides on the matched route pattern, never on the raw URL: the router
   // percent-decodes paths, so "/%61pi/me" reaches the "/api/me" handler.
@@ -56,7 +59,7 @@ export function registerAuth(app) {
     }
     if (request.routeOptions.config?.public === true) return;
 
-    if (!app.services.sessions.validate(sidOf(request))) {
+    if (!app.services.sessions.validate(sidOf(app, request))) {
       return reply.code(401).send({ error: 'unauthorized' });
     }
   });
@@ -93,7 +96,12 @@ export function registerAuth(app) {
   });
 
   app.post('/api/logout', async (request, reply) => {
-    app.services.sessions.destroy(sidOf(request));
+    const { sessions, hub } = app.services;
+    const token = sidOf(app, request);
+    sessions.destroy(token);
+    // Sockets opened by this session must not outlive it.
+    const key = sessions.keyOf(token);
+    if (key !== null) hub?.closeSessions((k) => k === key);
     reply.clearCookie(SESSION_COOKIE, cookieOptions);
     return reply.code(204).send();
   });

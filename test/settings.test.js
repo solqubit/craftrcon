@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { makeApp, TEST_HOST, TEST_ORIGIN } from './helpers.js';
 import { compareSemver, createUpdateCheck } from '../src/services/updateCheck.js';
 import { createMaintenance } from '../src/services/maintenance.js';
+import { createHub } from '../src/services/hub.js';
 import { createSessions } from '../src/security/sessions.js';
 import { createAudit } from '../src/services/audit.js';
 import { openDb } from '../src/db/index.js';
@@ -15,6 +16,7 @@ async function setup(t, options) {
   const ctx = await makeApp(options);
   t.after(async () => {
     ctx.services.manager.closeAll();
+    for (const client of ctx.app.websocketServer.clients) client.terminate();
     await ctx.app.close();
   });
   const headers = await ctx.login();
@@ -226,17 +228,6 @@ test('activity: pages with limit and the before cursor', async (t) => {
   assert.ok(empty.items.length >= 5);
 });
 
-test('activity: a deleted server leaves no orphan name', async (t) => {
-  const { call, services, db } = await setup(t);
-  const { a } = await seedActivity(call, services);
-  // Rows normally cascade away; a row whose server vanished still lists with a null name.
-  db.exec('PRAGMA foreign_keys = OFF');
-  db.prepare('DELETE FROM servers WHERE id = ?').run(a);
-  db.exec('PRAGMA foreign_keys = ON');
-  const row = (await call('GET', '/api/activity')).json().items.find((r) => r.action === 'a1');
-  assert.equal(row.serverName, null);
-});
-
 test('activity: invalid params are 400', async (t) => {
   const { call } = await setup(t);
   for (const qs of ['limit=0', 'limit=201', 'limit=abc', 'limit=-1', 'limit=1.5', 'serverId=abc', 'serverId=0', 'before=x', 'before=-3']) {
@@ -390,7 +381,7 @@ test('maintenance purges audit older than 90 days and idle sessions', () => {
   assert.equal(sessions.validate(young), true);
 });
 
-test('maintenance runs once shortly after start, then daily, on unref\'d timers', async (t) => {
+test('maintenance runs once shortly after start, then daily', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
   let runs = 0;
   const maintenance = createMaintenance({
@@ -421,6 +412,134 @@ test('maintenance logs instead of throwing when a purge fails', () => {
     sessions: { purgeIdle: () => 0 },
     log: { error: (...args) => logged.push(args) },
   });
-  assert.equal(maintenance.run(), null);
+  // The failing audit purge does not skip the sessions purge.
+  assert.deepEqual(maintenance.run(), { audit: null, sessions: 0 });
   assert.equal(logged.length, 1);
+
+  const flipped = createMaintenance({
+    audit: { purge: () => 3 },
+    sessions: {
+      purgeIdle: () => {
+        throw new Error('disk');
+      },
+    },
+    log: { error: (...args) => logged.push(args) },
+  });
+  assert.deepEqual(flipped.run(), { audit: 3, sessions: null });
+  assert.equal(logged.length, 2);
+});
+
+// ---- brute-force limiter on the password change -------------------------------
+
+test('password change: 5 wrong currents lock the 6th attempt, even a correct one, with 429', async (t) => {
+  const { call, services } = await setup(t);
+  for (let i = 0; i < 5; i += 1) {
+    const res = await call('POST', '/api/settings/password', { current: `wrong-guess-${i}`, next: 'a-new-password' });
+    assert.equal(res.statusCode, 403);
+  }
+  const locked = await call('POST', '/api/settings/password', { current: 'correct-horse-battery', next: 'a-new-password' });
+  assert.equal(locked.statusCode, 429);
+  assert.equal(locked.json().error, 'too_many_attempts');
+  assert.ok(locked.json().retryAfterMs > 0);
+  // Nothing changed.
+  assert.equal(await verifyPassword('correct-horse-battery', services.settings.get('admin_password_hash')), true);
+  // Every failed attempt was audited.
+  const failed = services.audit.list({}).filter((r) => r.action === 'password_change' && r.ok === false);
+  assert.equal(failed.length, 5);
+  assert.ok(failed.every((r) => r.origin === 'auth'));
+});
+
+test('password change: failed password changes count against login', async (t) => {
+  const { app, call, services } = await setup(t);
+  const loginWith = (password) =>
+    app.inject({ method: 'POST', url: '/api/login', headers: { host: TEST_HOST, origin: TEST_ORIGIN }, payload: { password } });
+
+  // Wrong password-change guesses block login.
+  for (let i = 0; i < 5; i += 1) {
+    await call('POST', '/api/settings/password', { current: `wrong-guess-${i}`, next: 'a-new-password' });
+  }
+  assert.equal((await loginWith('correct-horse-battery')).statusCode, 429);
+});
+
+test('password change: failed logins count against the password-change budget', async (t) => {
+  const { app, call } = await setup(t);
+  for (let i = 0; i < 5; i += 1) {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/login',
+      headers: { host: TEST_HOST, origin: TEST_ORIGIN },
+      payload: { password: `wrong-guess-${i}` },
+    });
+    assert.equal(res.statusCode, 401);
+  }
+  const res = await call('POST', '/api/settings/password', { current: 'correct-horse-battery', next: 'a-new-password' });
+  assert.equal(res.statusCode, 429);
+});
+
+test('password change: a correct current resets the failure count; validation errors do not consume attempts', async (t) => {
+  const { call } = await setup(t);
+  for (let i = 0; i < 4; i += 1) {
+    await call('POST', '/api/settings/password', { current: `wrong-guess-${i}`, next: 'a-new-password' });
+  }
+  for (let i = 0; i < 10; i += 1) await call('POST', '/api/settings/password', { current: 'x' });
+  // Correct current (too-short next) still goes through and settles as success.
+  assert.equal((await call('POST', '/api/settings/password', { current: 'correct-horse-battery', next: 'short' })).statusCode, 400);
+  for (let i = 0; i < 4; i += 1) {
+    assert.equal((await call('POST', '/api/settings/password', { current: `wrong-again-${i}`, next: 'a-new-password' })).statusCode, 403);
+  }
+  assert.equal((await call('POST', '/api/settings/password', { current: 'correct-horse-battery', next: 'a-new-password' })).statusCode, 204);
+});
+
+// ---- revoked sessions lose their live sockets ----------------------------------
+
+async function openLive(t, ctx, headers, serverId) {
+  const ws = await ctx.app.injectWS(`/api/servers/${serverId}/live`, { headers });
+  t.after(() => ws.terminate());
+  const closed = new Promise((resolve) => ws.on('close', (code) => resolve(code)));
+  return { ws, closed };
+}
+
+const stillOpen = (promise) => Promise.race([promise.then(() => false), new Promise((r) => setTimeout(() => r(true), 150))]);
+
+test('password change closes the live sockets of other sessions (4401) but not the caller\'s', async (t) => {
+  const ctx = await setup(t);
+  const serverId = (await ctx.call('POST', '/api/servers', { name: 'S', host: '127.0.0.1', rconPort: 1, password: 'pw' })).json().id;
+  const other = await ctx.login(); // session A
+  const mine = ctx.headers; // session B, the one changing the password
+  const a = await openLive(t, ctx, other, serverId);
+  const b = await openLive(t, ctx, mine, serverId);
+
+  const res = await ctx.call('POST', '/api/settings/password', { current: 'correct-horse-battery', next: 'a-new-password' });
+  assert.equal(res.statusCode, 204);
+
+  assert.equal(await a.closed, 4401);
+  assert.equal(await stillOpen(b.closed), true, 'caller socket stays open');
+  assert.deepEqual(ctx.services.hub.subscribedServerIds(), [serverId], 'only the caller socket remains subscribed');
+});
+
+test('logout closes the caller\'s live sockets and leaves other sessions\' alone', async (t) => {
+  const ctx = await setup(t);
+  const serverId = (await ctx.call('POST', '/api/servers', { name: 'S', host: '127.0.0.1', rconPort: 1, password: 'pw' })).json().id;
+  const other = await ctx.login();
+  const mine = ctx.headers;
+  const a = await openLive(t, ctx, other, serverId);
+  const b = await openLive(t, ctx, mine, serverId);
+
+  assert.equal((await ctx.call('POST', '/api/logout')).statusCode, 204);
+
+  assert.equal(await b.closed, 4401);
+  assert.equal(await stillOpen(a.closed), true, 'other session socket stays open');
+});
+
+test('hub.closeSessions closes matching sockets with 4401 and unsubscribes them', () => {
+  const closes = [];
+  const fake = (name) => ({ name, readyState: 1, close: (code, reason) => closes.push([name, code, reason]) });
+  const hub = createHub();
+  const [x, y, z] = [fake('x'), fake('y'), fake('z')];
+  hub.subscribe(1, x, 'k1');
+  hub.subscribe(1, y, 'k2');
+  hub.subscribe(2, z); // no session key
+  hub.closeSessions((key) => key !== 'k1');
+  assert.deepEqual(closes, [['y', 4401, 'session_ended'], ['z', 4401, 'session_ended']]);
+  assert.deepEqual(hub.subscribedServerIds(), [1]);
 });

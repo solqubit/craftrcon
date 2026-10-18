@@ -1,5 +1,7 @@
 import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
 
+export const MIN_PASSWORD_LENGTH = 8;
+
 const N = 16384;
 const R = 8;
 const P = 1;

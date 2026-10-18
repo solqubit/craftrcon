@@ -2,11 +2,10 @@ import { mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { loadConfig } from './config.js';
 import { openDb } from './db/index.js';
-import { hashPassword } from './security/password.js';
+import { hashPassword, MIN_PASSWORD_LENGTH } from './security/password.js';
 import { loadOrCreateKey } from './security/secretbox.js';
 import { createSettings } from './services/settings.js';
 
-const MIN_PASSWORD_LENGTH = 8;
 const USAGE = 'Usage: node src/cli.js <init|set-password>\n';
 
 function prepareDataDir(config) {

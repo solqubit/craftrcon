@@ -61,5 +61,9 @@ export function createSessions(db, { idleMs = DEFAULT_IDLE_MS, now = Date.now } 
     return Number(removeIdle.run(now() - idleMs).changes);
   }
 
-  return { create, validate, destroy, destroyAll, destroyAllExcept, purgeIdle };
+  // Opaque identifier of a session that is safe to keep in memory (the live hub
+  // tags its sockets with it) because it is not the cookie token itself.
+  const keyOf = (token) => (typeof token === 'string' && token !== '' ? hashToken(token) : null);
+
+  return { create, validate, destroy, destroyAll, destroyAllExcept, purgeIdle, keyOf };
 }

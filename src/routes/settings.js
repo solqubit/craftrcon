@@ -1,9 +1,8 @@
 import { DEFAULT_DANGEROUS_COMMANDS } from '../../public/js/data/dangerous.js';
-import { hashPassword, verifyPassword } from '../security/password.js';
-import { SESSION_COOKIE } from './auth.js';
+import { hashPassword, MIN_PASSWORD_LENGTH, verifyPassword } from '../security/password.js';
+import { sidOf } from './auth.js';
 import { validation } from './servers.js';
 
-export const MIN_PASSWORD_LENGTH = 8;
 const DANGEROUS_KEY = 'dangerous_commands';
 const MAX_DANGEROUS = 50;
 const MAX_DANGEROUS_LENGTH = 64;
@@ -51,18 +50,43 @@ export function registerSettingsRoutes(app) {
     }
     if (Object.keys(fields).length > 0) return validation(reply, fields);
 
-    const stored = settings.get('admin_password_hash', null);
-    if (stored === null || !(await verifyPassword(body.current, stored))) {
+    // Same limiter as login: a stolen session must not be able to guess the
+    // current password without limit. check() reserves a slot that fail(),
+    // success() or release() settles.
+    const { rateLimiter: limiter, hub } = app.services;
+    const ip = request.ip;
+    const gate = limiter.check(ip);
+    if (!gate.allowed) {
+      return reply.code(429).send({ error: 'too_many_attempts', retryAfterMs: gate.retryAfterMs });
+    }
+
+    let ok;
+    try {
+      const stored = settings.get('admin_password_hash', null);
+      ok = stored !== null && (await verifyPassword(body.current, stored));
+    } catch (err) {
+      limiter.release(ip);
+      throw err;
+    }
+    if (!ok) {
+      limiter.fail(ip);
+      audit.log({ origin: 'auth', action: 'password_change', detail: ip, ok: false });
       return reply.code(403).send({ error: 'invalid_password' });
     }
+    limiter.success(ip);
+
     if (body.next.length < MIN_PASSWORD_LENGTH) {
       return reply.code(400).send({ error: 'password_too_short' });
     }
 
     settings.set('admin_password_hash', await hashPassword(body.next));
     // The auth hook already validated this cookie, so it is the caller's own session.
-    sessions.destroyAllExcept(app.parseCookie(request.headers.cookie ?? '')[SESSION_COOKIE]);
-    audit.log({ origin: 'auth', action: 'password_change' });
+    const token = sidOf(app, request);
+    sessions.destroyAllExcept(token);
+    // Sockets of the sessions just revoked must not keep streaming.
+    const keep = sessions.keyOf(token);
+    hub?.closeSessions((key) => key !== keep);
+    audit.log({ origin: 'auth', action: 'password_change', detail: ip });
     return reply.code(204).send();
   });
 

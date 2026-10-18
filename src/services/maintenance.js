@@ -17,12 +17,19 @@ export function createMaintenance({
   let timer = null;
 
   function run() {
-    try {
-      return { audit: audit.purge(retentionMs), sessions: sessions.purgeIdle() };
-    } catch (err) {
-      log?.error({ err }, 'maintenance failed');
-      return null;
-    }
+    // Separate attempts: one purge failing must not skip the other.
+    const attempt = (name, purge) => {
+      try {
+        return purge();
+      } catch (err) {
+        log?.error({ err }, `maintenance: ${name} purge failed`);
+        return null;
+      }
+    };
+    return {
+      audit: attempt('audit', () => audit.purge(retentionMs)),
+      sessions: attempt('sessions', () => sessions.purgeIdle()),
+    };
   }
 
   function start() {

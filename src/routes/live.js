@@ -1,4 +1,4 @@
-import { originAllowed } from './auth.js';
+import { originAllowed, sidOf } from './auth.js';
 import { notFound, parseId } from './servers.js';
 
 // The upgrade request is a GET, so the global hook in routes/auth.js checks the
@@ -18,7 +18,7 @@ export function registerLiveRoutes(app) {
   app.register(async (scope) => {
     scope.get('/api/servers/:id/live', { websocket: true, preValidation }, (socket, request) => {
       const { hub } = app.services;
-      hub.subscribe(Number(request.params.id), socket);
+      hub.subscribe(Number(request.params.id), socket, app.services.sessions.keyOf(sidOf(app, request)));
       socket.on('close', () => hub.unsubscribe(socket));
     });
   });
