@@ -12,6 +12,7 @@ import { createHub } from './services/hub.js';
 import { createCommands } from './services/commands.js';
 import { createStatus } from './services/status.js';
 import { createSampler } from './services/sampler.js';
+import { createHeads } from './services/heads.js';
 import { ConnectionManager } from './minecraft/connection.js';
 
 const config = loadConfig();
@@ -39,6 +40,7 @@ const app = buildApp({
     hub,
     commands,
     status,
+    heads: createHeads({ dir: join(dataDir, 'heads') }),
   },
 });
 const sampler = createSampler({ db, servers, status, hub, log: app.log });
