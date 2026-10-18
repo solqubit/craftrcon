@@ -1021,7 +1021,7 @@ Todos los scripts:
      - `0` → `ok MSG_UP_TO_DATE "$OLD"` ("CraftRCON %s is already up to date") y `exit 0` **sin tocar nada**.
      - `-1` → `die MSG_DOWNGRADE_REFUSED "$OLD" "$NEW"`.
      - `1` → muestra `"$OLD → $NEW"` y confirma (`--yes` la salta).
-  3. **Respaldo:** `BK=/var/lib/craftrcon/backups/$(date +%Y%m%d-%H%M%S)-$OLD`. Copia `craftrcon.db*` (con el servicio **detenido**, para que WAL quede consistente), `config.json` e `installed.json`. Conserva los 5 más recientes.
+  3. **Respaldo:** `BK=/var/backups/craftrcon/$(date +%Y%m%d-%H%M%S)-$OLD` (R16). Copia `craftrcon.db*` (con el servicio **detenido**, para que WAL quede consistente), `config.json` e `installed.json`. Conserva los 5 más recientes.
   4. `service_stop`, `mv APP_DIR APP_DIR.prev`, copia la nueva (mismas exclusiones que en la Tarea 28) y `npm ci --omit=dev`.
   5. `ensure_node` (si `package.json` pide una versión mayor que la instalada, la actualiza).
   6. `service_start` + `wait_health 30` y comprobar que `/api/health.version == NEW`.

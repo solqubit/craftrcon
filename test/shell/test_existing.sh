@@ -236,7 +236,7 @@ DEFAULT_FW='[{ "tool": "ufw", "port": 80 }, { "tool": "ufw", "port": 443 }]'
 mk_sandbox() {
   local fw="${1:-$DEFAULT_FW}"
   rm -rf "$SB" "$SB.calls" "$SB.user"
-  mkdir -p "$SB/opt/app/src" "$SB/opt/node/bin" "$SB/etc" "$SB/data/caddy" "$SB/log" "$SB/root/etc/systemd/system"
+  mkdir -p "$SB/opt/app/src" "$SB/opt/node/bin" "$SB/etc" "$SB/data/caddy" "$SB/log" "$SB/root/etc/systemd/system" "$SB/backups/craftrcon/20261001-000000-1.4.1"
   printf '{\n  "version": "1.4.2",\n  "port": 8080,\n  "firewall": %s\n}\n' "$fw" >"$SB/opt/installed.json"
   echo '{"port": 8080}' >"$SB/etc/config.json"
   echo db >"$SB/data/craftrcon.db"
@@ -252,7 +252,7 @@ sandbox_env=(PATH="$TMP/bin:$PATH" INIT_OVERRIDE=systemd LIBC_OVERRIDE=glibc OS_
 sb_run() {
   local in="$1" out rc=0
   shift
-  out="$(fl_in "$in" "OPT_DIR='$SB/opt'; APP_DIR='$SB/opt/app'; NODE_DIR='$SB/opt/node'; DATA_DIR='$SB/data'; CONF_DIR='$SB/etc'; CONFIG_FILE='$SB/etc/config.json'; LOG_FILE='$SB/log/craftrcon.log'; PROXY_LOG_FILE='$SB/log/proxy.log'; INSTALLED_FILE='$SB/opt/installed.json'; require_root() { :; }; main $*" "${sandbox_env[@]}" PATH="${SB_PATH_PREFIX:-}$TMP/bin:$PATH" INIT_OVERRIDE="${SB_INIT:-systemd}")" || rc=$?
+  out="$(fl_in "$in" "OPT_DIR='$SB/opt'; APP_DIR='$SB/opt/app'; NODE_DIR='$SB/opt/node'; DATA_DIR='$SB/data'; BACKUP_ROOT='$SB/backups/craftrcon'; CONF_DIR='$SB/etc'; CONFIG_FILE='$SB/etc/config.json'; LOG_FILE='$SB/log/craftrcon.log'; PROXY_LOG_FILE='$SB/log/proxy.log'; INSTALLED_FILE='$SB/opt/installed.json'; require_root() { :; }; main $*" "${sandbox_env[@]}" PATH="${SB_PATH_PREFIX:-}$TMP/bin:$PATH" INIT_OVERRIDE="${SB_INIT:-systemd}")" || rc=$?
   printf '%s\nrc=%s' "$out" "$rc"
 }
 exists() { [ -e "$1" ] && echo yes || echo no; }
@@ -279,6 +279,8 @@ assert_contains "Firewall rule: TCP port 443 in ufw" "$out" "summary: firewall r
 assert_contains "Kept:" "$out" "summary lists what was kept"
 assert_contains "$SB/data (your data)" "$out" "summary: data kept"
 assert_contains "The system user craftrcon" "$out" "summary: user kept"
+assert_contains "$SB/backups/craftrcon (update backups). To delete them later: sudo rm -rf $SB/backups/craftrcon" "$out" "summary: update backups kept (with how to delete them)"
+assert_eq "yes" "$(exists "$SB/backups/craftrcon")" "the update backups are kept with the data"
 # Idempotent: nothing left, so a second run is a no-op.
 out="$(sb_run '' --uninstall --non-interactive)"
 assert_contains "rc=0" "$out" "uninstalling twice exits 0"
@@ -289,9 +291,11 @@ mk_sandbox
 out="$(sb_run '' --uninstall --purge --non-interactive)"
 assert_contains "rc=0" "$out" "--purge exits 0"
 assert_eq "no|no|no" "$(exists "$SB/opt")|$(exists "$SB/data")|$(exists "$SB.user")" "--purge removes the app, the data and the user"
+assert_eq "no" "$(exists "$SB/backups/craftrcon")" "--purge also removes the update backups"
 assert_contains "userdel craftrcon" "$(cat "$SB.calls")" "--purge runs userdel (its exit 12 is tolerated)"
 assert_contains "$SB/data (database" "$out" "summary: data removed"
 assert_contains "The system user craftrcon" "$out" "summary: user removed"
+assert_contains "$SB/backups/craftrcon (update backups)" "$out" "summary: update backups removed"
 case "$out" in *"(your data)"*) r=kept ;; *) r=gone ;; esac
 assert_eq "gone" "$r" "--purge does not list the data as kept"
 
@@ -311,6 +315,7 @@ assert_eq "no|yes|yes" "$(exists "$SB/opt")|$(exists "$SB/data")|$(exists "$SB.u
 mk_sandbox
 out="$(sb_run $'y\ny' --uninstall)"
 assert_eq "no|no|no" "$(exists "$SB/opt")|$(exists "$SB/data")|$(exists "$SB.user")" "interactive: y then y deletes the data and the user"
+assert_eq "no" "$(exists "$SB/backups/craftrcon")" "interactive: deleting the data also deletes the update backups"
 mk_sandbox
 out="$(sb_run $'y\nn' --uninstall)"
 assert_eq "no|yes|yes" "$(exists "$SB/opt")|$(exists "$SB/data")|$(exists "$SB.user")" "interactive: y then n keeps the data"
@@ -357,7 +362,7 @@ out="$(SB_PATH_PREFIX="$TMP/bin-fail:" sb_run '' --uninstall --non-interactive)"
 assert_contains "rc=0" "$out" "a failing 'systemctl stop' only warns"
 assert_contains "Could not stop the service" "$out" "the stop failure is reported"
 mk_sandbox
-out="$(fl_in '' "OPT_DIR='$SB/opt'; APP_DIR='$SB/opt/app'; DATA_DIR='$SB/data'; CONF_DIR='$SB/etc'; LOG_FILE='$SB/log/craftrcon.log'; PROXY_LOG_FILE='$SB/log/proxy.log'; INSTALLED_FILE='$SB/opt/installed.json'; require_root() { :; }; rm() { [ \"\${1:-}\" = -rf ] && [ \"\${2:-}\" = '$SB/etc' ] && return 1; command rm \"\$@\"; }; main --uninstall --non-interactive; echo reached-the-end" "${sandbox_env[@]}")" && rc=0 || rc=$?
+out="$(fl_in '' "OPT_DIR='$SB/opt'; APP_DIR='$SB/opt/app'; DATA_DIR='$SB/data'; BACKUP_ROOT='$SB/backups/craftrcon'; CONF_DIR='$SB/etc'; LOG_FILE='$SB/log/craftrcon.log'; PROXY_LOG_FILE='$SB/log/proxy.log'; INSTALLED_FILE='$SB/opt/installed.json'; require_root() { :; }; rm() { [ \"\${1:-}\" = -rf ] && [ \"\${2:-}\" = '$SB/etc' ] && return 1; command rm \"\$@\"; }; main --uninstall --non-interactive; echo reached-the-end" "${sandbox_env[@]}")" && rc=0 || rc=$?
 assert_eq "1" "$rc" "a failing step aborts the uninstall (errexit)"
 assert_contains "safe to run sudo ./install.sh --uninstall again" "$out" "the failure says it can be repeated"
 assert_eq "yes" "$(exists "$SB/opt/installed.json")" "installed.json stays until the very end (so a re-run is possible)"

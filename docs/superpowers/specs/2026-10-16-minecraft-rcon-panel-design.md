@@ -315,7 +315,7 @@ sudo ./update
    - **Igual:** dice "CraftRCON 1.4.2 is already up to date", no cambia nada y termina con éxito.
    - **Más nueva:** muestra "1.4.1 → 1.4.2" y pide confirmación (o sigue directo con `--yes`).
    - **Más vieja:** avisa que sería volver atrás y se detiene. Volver atrás puede romper la base de datos; no hay forma de forzarlo en v1.
-3. **Respaldo:** copia la base de datos y la configuración a `/var/lib/craftrcon/backups/<fecha>-<versión>/`. Se guardan los últimos 5.
+3. **Respaldo:** copia la base de datos y la configuración a `/var/backups/craftrcon/<fecha>-<versión>/` (fuera de la carpeta de datos, que pertenece al usuario del servicio; ruling R16). Se guardan los últimos 5.
 4. Detiene el servicio, reemplaza los archivos de la aplicación en `/opt/craftrcon` con los de la copia y ejecuta `npm ci --omit=dev`.
 5. Si la nueva versión exige un Node más nuevo, lo descarga igual que el instalador.
 6. Arranca el servicio. Las migraciones de base de datos se aplican solas al arrancar.

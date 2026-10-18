@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Unit tests for scripts/update-flow.sh: options, the version decision (equal / older /
-# newer), confirmation, backups and their rotation, the data-folder hardening (symbolic
-# links), and the whole update with automatic rollback (also under SIGHUP/SIGPIPE) against
+# newer), confirmation, backups and their rotation, the hardening (backups outside the
+# service-writable data folder, symbolic and hard links, the race from review R16), and the whole update with automatic rollback (also under SIGHUP/SIGPIPE) against
 # a sandbox (temp dirs, stubbed service manager, npm and health check).
 # The real thing (a container with the panel running) is update-in-container.sh.
 # shellcheck disable=SC2016 # the snippets are deliberately single-quoted (they expand in the child bash)
@@ -140,16 +140,38 @@ with_proxy() {
 # The stubs: the "panel" runs the VERSION of APP_DIR; a src/server.js containing BROKEN
 # never answers (but migrates the database first, like a version that crashes late).
 # SIG_IN_ROLLBACK sends HUP and PIPE to the flow when the rollback stops the panel;
-# STOP_FAIL_IN_ROLLBACK makes that stop fail.
+# STOP_FAIL_IN_ROLLBACK makes that stop fail. SWAP_AT_STOP replaces the database by a link
+# to VICTIM at the first stop; ATTACK plants links in the data folder while the broken new
+# version runs (see attack).
 SB_STUBS='require_root() { :; }; detect_os() { INIT=systemd; LIBC=glibc; }; init_run_as() { :; }
 owned_by_root() { ! grep -qxF "$1" "$SB.notroot" 2>/dev/null; }
 service_stop() { if grep -q "^stop" "$SB.calls"; then
     if [ -n "${SIG_IN_ROLLBACK:-}" ]; then kill -HUP $$; kill -PIPE $$; fi
     [ -z "${STOP_FAIL_IN_ROLLBACK:-}" ] || return 1
+  elif [ -n "${SWAP_AT_STOP:-}" ]; then rm -f "$DATA_DIR/craftrcon.db"; ln -s "$VICTIM" "$DATA_DIR/craftrcon.db"
   fi; echo stop >>"$SB.calls"; rm -f "$SB.running"; }
+attack() { # what a process of the service user could do in its data folder meanwhile (the
+  # review PoC): move a real backups folder away, put a link to a forged tree in its place
+  # with backups named like the one being made (an attacker database, a .restore link to
+  # VICTIM, a unit running as root), and plant links at every other name.
+  local t n
+  if [ -d "$DATA_DIR/backups" ] && [ ! -L "$DATA_DIR/backups" ]; then mv "$DATA_DIR/backups" "$DATA_DIR/backups.orig"; fi
+  mkdir -p "$DATA_DIR/evil"
+  for t in $(seq $(($(date +%s) - 20)) $(($(date +%s) + 2))); do
+    n="$DATA_DIR/evil/$(date -d "@$t" +%Y%m%d-%H%M%S)-1.4.2"
+    mkdir -p "$n"
+    echo ATTACKER >"$n/craftrcon.db"
+    ln -s "$VICTIM" "$n/.restore-craftrcon.db"
+    echo "User=root" >"$n/craftrcon.unit"
+  done
+  ln -s "$DATA_DIR/evil" "$DATA_DIR/backups"
+  ln -s "$VICTIM_DIR" "$DATA_DIR/backups.dir"
+  for n in .restore-craftrcon.db .restore-craftrcon.db-wal .craftrcon.db.restore .partial; do ln -s "$VICTIM" "$DATA_DIR/$n"; done
+  rm -f "$DATA_DIR/craftrcon.db" "$DATA_DIR/craftrcon.db-wal"
+  ln -s "$VICTIM" "$DATA_DIR/craftrcon.db"; ln -s "$VICTIM" "$DATA_DIR/craftrcon.db-wal"; }
 service_start() { if [ "${1:-}" = craftrcon-proxy ]; then echo "start proxy" >>"$SB.calls"; return 0; fi
   echo "start $(cat "$APP_DIR/VERSION")" >>"$SB.calls"; [ -z "${START_FAIL:-}" ] || return 1
-  if grep -q BROKEN "$APP_DIR/src/server.js"; then echo migrated >>"$DATA_DIR/craftrcon.db"; echo shm >"$DATA_DIR/craftrcon.db-shm"; return 0; fi
+  if grep -q BROKEN "$APP_DIR/src/server.js"; then echo migrated >>"$DATA_DIR/craftrcon.db"; echo shm >"$DATA_DIR/craftrcon.db-shm"; [ -z "${ATTACK:-}" ] || attack; return 0; fi
   cp "$APP_DIR/VERSION" "$SB.running"; }
 wait_health() { [ -f "$SB.running" ]; }
 health_version() { tr -d "[:space:]" <"$SB.running"; }
@@ -168,7 +190,7 @@ chmod +x "$TMP/bin-fake/curl"
 sb_run() {
   local in="$1" out rc=0
   shift
-  out="$(env SB="$SB" SERVICE_ROOT="$SB/root" PATH="$TMP/bin-fake:$PATH" bash -c "set -Eeuo pipefail; . '$FLOWC'; OPT_DIR='$SB/opt'; APP_DIR='$SB/opt/app'; NODE_DIR='$SB/opt/node'; DATA_DIR='$SB/data'; CONF_DIR='$SB/etc'; CONFIG_FILE='$SB/etc/config.json'; LOG_FILE='$SB/log/craftrcon.log'; INSTALLED_FILE='$SB/opt/installed.json'; CADDY_BIN='$SB/opt/caddy'; CADDYFILE='$SB/etc/Caddyfile'; CADDY_DATA='$SB/data/caddy'; PROXY_LOG_FILE='$SB/log/proxy.log'; $SB_STUBS; main $*" <<<"$in" 2>&1)" || rc=$?
+  out="$(env SB="$SB" SERVICE_ROOT="$SB/root" PATH="$TMP/bin-fake:$PATH" bash -c "set -Eeuo pipefail; . '$FLOWC'; OPT_DIR='$SB/opt'; APP_DIR='$SB/opt/app'; NODE_DIR='$SB/opt/node'; DATA_DIR='$SB/data'; BACKUP_ROOT='$SB/backups/craftrcon'; CONF_DIR='$SB/etc'; CONFIG_FILE='$SB/etc/config.json'; LOG_FILE='$SB/log/craftrcon.log'; INSTALLED_FILE='$SB/opt/installed.json'; CADDY_BIN='$SB/opt/caddy'; CADDYFILE='$SB/etc/Caddyfile'; CADDY_DATA='$SB/data/caddy'; PROXY_LOG_FILE='$SB/log/proxy.log'; $SB_STUBS; main $*" <<<"$in" 2>&1)" || rc=$?
   printf '%s\nrc=%s' "$out" "$rc"
 }
 exists() { [ -e "$1" ] || [ -L "$1" ] && echo yes || echo no; }
@@ -182,7 +204,7 @@ out="$(sb_run '' --yes)"
 assert_contains "rc=0" "$out" "same version: exits 0"
 assert_contains "CraftRCON 1.4.2 is already up to date" "$out" "same version: says it is up to date"
 assert_eq "" "$(calls)" "same version: the service is not touched"
-assert_eq "no" "$(exists "$SB/data/backups")" "same version: no backup"
+assert_eq "no" "$(exists "$SB/backups/craftrcon")" "same version: no backup"
 assert_eq "2026-01-01" "$(date -r "$SB/opt/app" +%Y-%m-%d)" "same version: the application folder is not touched"
 assert_contains "CraftRCON 1.4.2 ya está actualizado" "$(sb_run '' --lang es)" "same version (es)"
 
@@ -202,7 +224,7 @@ out="$(sb_run 'n')"
 assert_contains "rc=0" "$out" "answering no: exits 0"
 assert_contains "Update now? (y/n) [y]" "$out" "interactive: asks for confirmation"
 assert_contains "Update cancelled" "$out" "answering no: cancelled"
-assert_eq "|no" "$(calls)|$(exists "$SB/data/backups")" "answering no: nothing changes"
+assert_eq "|no" "$(calls)|$(exists "$SB/backups/craftrcon")" "answering no: nothing changes"
 rm -f "$SB/root/etc/systemd/system/craftrcon.service"
 out="$(sb_run 'y')"
 case "$out" in *"Update now?"*) r=asked ;; *) r=not-asked ;; esac
@@ -227,37 +249,71 @@ rm -f "$SB/data/craftrcon.db"
 out="$(sb_run '' --yes)"
 assert_contains "rc=1" "$out" "no database: exits 1"
 assert_contains "The database $SB/data/craftrcon.db was not found" "$out" "no database: explained"
-assert_eq "|no" "$(calls)|$(exists "$SB/data/backups")" "no database: refused before any change"
+assert_eq "|no" "$(calls)|$(exists "$SB/backups/craftrcon")" "no database: refused before any change"
 
-echo "sandbox: data folder hardening (symbolic links)"
+echo "sandbox: hardening (backups outside the data folder, links, hard links)"
+# The backups live in BACKUP_ROOT ($SB/backups/craftrcon here, /var/backups/craftrcon for
+# real): both it and its parent must be root-only folders.
+for bad in "$SB/backups" "$SB/backups/craftrcon"; do
+  mk_sandbox
+  mkdir -p "$SB/backups/craftrcon"
+  echo "$bad" >"$SB.notroot"
+  out="$(sb_run '' --yes)"
+  assert_contains "rc=1" "$out" "${bad#"$SB"/} not owned by root: exits 1"
+  assert_contains "$bad is not safe to use" "$out" "${bad#"$SB"/} not owned by root: explained"
+  assert_eq "" "$(calls)" "${bad#"$SB"/} not owned by root: refused before any change"
+done
 mk_sandbox
-mkdir -p "$SB/data/backups"
-echo "$SB/data/backups" >"$SB.notroot"
+mkdir -p "$SB/backups"
+echo 'not a folder' >"$SB/backups/craftrcon"
 out="$(sb_run '' --yes)"
-assert_contains "rc=1" "$out" "a backups folder not owned by root: exits 1"
-assert_contains "is not owned by root" "$out" "a backups folder not owned by root: explained"
-assert_eq "" "$(calls)" "a backups folder not owned by root: refused before any change"
+assert_contains "rc=1" "$out" "a file instead of the backups folder: exits 1"
+assert_eq "" "$(calls)" "a file instead of the backups folder: refused before any change"
 mk_sandbox
-echo 'not a folder' >"$SB/data/backups"
+mkdir -p "$SB/backups"
+chmod 0775 "$SB/backups"
+if [ "$(stat -c %a "$SB/backups")" = 775 ]; then
+  out="$(sb_run '' --yes)"
+  assert_contains "rc=1" "$out" "a group-writable backups parent: exits 1"
+  assert_eq "" "$(calls)" "a group-writable backups parent: refused before any change"
+fi
+mk_sandbox
 out="$(sb_run '' --yes)"
-assert_contains "rc=1" "$out" "a backups file instead of a folder: exits 1"
-assert_eq "" "$(calls)" "a backups file instead of a folder: refused before any change"
+assert_contains "rc=0" "$out" "missing backup folders are created"
+assert_eq "yes|no" "$(exists "$SB/backups/craftrcon")|$(exists "$SB/data/backups")" "the backup goes to BACKUP_ROOT, never into the data folder"
+mk_sandbox
+echo 'victim' >"$TMP/victim"
+rm -f "$SB/data/craftrcon.db"
+if ln "$TMP/victim" "$SB/data/craftrcon.db" 2>/dev/null && [ "$(stat -c %h "$TMP/victim")" = 2 ]; then
+  out="$(sb_run '' --yes)"
+  assert_contains "rc=1" "$out" "a hard-linked database: exits 1"
+  assert_contains "has extra hard links" "$out" "a hard-linked database: explained"
+  assert_eq "|no" "$(calls)|$(exists "$SB/backups/craftrcon")" "a hard-linked database: refused before any change"
+fi
+rm -f "$TMP/victim"
+# Restores are staged inside the (root-only) backup and renamed into the data folder.
+mkdir -p "$TMP/stage-bk" "$TMP/stage-db"
+echo db >"$TMP/stage-bk/craftrcon.db"
+out="$(fl "BACKUP_DIR='$TMP/stage-bk'; DB_DIR='$TMP/stage-db'; chown() { :; }; mv() { echo \"MV \$*\"; command mv \"\$@\"; }; restore_db")"
+assert_eq "MV -fT $TMP/stage-bk/.restore-craftrcon.db $TMP/stage-db/craftrcon.db" "$out" "restore_db stages in the backup folder and renames into place"
+assert_eq "db" "$(cat "$TMP/stage-db/craftrcon.db")" "restore_db puts the file in place"
 if [ "$CAN_SYMLINK" = 1 ]; then
   mk_sandbox
   mkdir -p "$TMP/victim"
   echo 'victim' >"$TMP/victim/file"
-  ln -s "$TMP/victim" "$SB/data/backups"
+  ln -s "$TMP/victim" "$SB/backups"
   out="$(sb_run '' --yes)"
-  assert_contains "rc=1" "$out" "a backups symlink: exits 1"
-  assert_contains "$SB/data/backups is a symbolic link" "$out" "a backups symlink: explained"
-  assert_eq "|victim|1" "$(calls)|$(cat "$TMP/victim/file")|$(find "$TMP/victim" -mindepth 1 | wc -l | tr -d ' ')" "a backups symlink: refused with no change (nothing written through it)"
+  assert_contains "rc=1" "$out" "a symlinked backups parent: exits 1"
+  assert_contains "$SB/backups is not safe to use" "$out" "a symlinked backups parent: explained"
+  assert_eq "|victim|1" "$(calls)|$(cat "$TMP/victim/file")|$(find "$TMP/victim" -mindepth 1 | wc -l | tr -d ' ')" "a symlinked backups parent: refused, nothing written through it"
+  rm -rf "$TMP/victim"
   mk_sandbox
   echo 'victim-db' >"$TMP/victim"
   rm -f "$SB/data/craftrcon.db"
   ln -s "$TMP/victim" "$SB/data/craftrcon.db"
   out="$(sb_run '' --yes)"
   assert_contains "rc=1" "$out" "a database symlink: exits 1"
-  assert_eq "|no" "$(calls)|$(exists "$SB/data/backups")" "a database symlink: refused before any change"
+  assert_eq "|no" "$(calls)|$(exists "$SB/backups/craftrcon")" "a database symlink: refused before any change"
   mk_sandbox
   rm -f "$SB/data/craftrcon.db-wal"
   echo 'victim-wal' >"$TMP/victim"
@@ -265,17 +321,36 @@ if [ "$CAN_SYMLINK" = 1 ]; then
   out="$(sb_run '' --yes)"
   assert_contains "rc=1" "$out" "a WAL symlink: exits 1"
   assert_eq "" "$(calls)" "a WAL symlink: refused before any change"
-  # A link planted where an older version staged restores: a rollback must not write through it.
+  # The database is swapped for a link after the checks, while the panel stops: the backup
+  # re-checks it and the update rolls back without reading through the link.
+  mk_sandbox
+  set_copy_version 1.5.0
+  echo 'secret' >"$TMP/victim"
+  out="$(SWAP_AT_STOP=1 VICTIM="$TMP/victim" sb_run '' --yes)"
+  assert_contains "rc=1" "$out" "a database swapped for a link at the stop: exits 1"
+  assert_contains "$SB/data/craftrcon.db is not safe to use" "$out" "a database swapped for a link at the stop: explained"
+  assert_eq "" "$(grep -rl secret "$SB/backups" 2>/dev/null)" "a database swapped for a link at the stop: its target is never copied"
+  assert_eq "1.4.2" "$(cat "$SB/opt/app/VERSION")" "a database swapped for a link at the stop: still the previous version"
+  # The race from the review (R16): while the new version runs, a process of the service
+  # user renames and replaces entries in the data folder (a backups -> victim link, links
+  # at every name a restore could use, the database itself replaced by a link). The
+  # rollback must not follow any of them.
   mk_sandbox
   set_copy_version 1.5.0
   echo 'BROKEN' >"$COPY/src/server.js"
+  mkdir -p "$TMP/victimdir"
   echo 'shadow' >"$TMP/victim"
-  ln -s "$TMP/victim" "$SB/data/.craftrcon.db.restore"
-  out="$(sb_run '' --yes)"
+  echo 'keep' >"$TMP/victimdir/file"
+  out="$(ATTACK=1 VICTIM="$TMP/victim" VICTIM_DIR="$TMP/victimdir" sb_run '' --yes)"
   echo 'server' >"$COPY/src/server.js"
-  assert_contains "CraftRCON 1.4.2 was restored" "$out" "planted .restore link: the rollback completes"
-  assert_eq "shadow|yes" "$(cat "$TMP/victim")|$([ -L "$SB/data/.craftrcon.db.restore" ] && echo yes)" "planted .restore link: its target is untouched"
-  assert_eq "old-db|no" "$(cat "$SB/data/craftrcon.db")|$([ -L "$SB/data/craftrcon.db" ] && echo yes || echo no)" "planted .restore link: the database is restored as a plain file"
+  assert_contains "rc=1" "$out" "race: the broken update exits 1"
+  assert_contains "CraftRCON 1.4.2 was restored" "$out" "race: the rollback completes"
+  assert_eq "shadow|keep|1" "$(cat "$TMP/victim")|$(cat "$TMP/victimdir/file")|$(find "$TMP/victimdir" -mindepth 1 | wc -l | tr -d ' ')" "race: nothing outside the data folder was written"
+  assert_eq "old-db|no|no" "$(cat "$SB/data/craftrcon.db")|$([ -L "$SB/data/craftrcon.db" ] && echo yes || echo no)|$([ -L "$SB/data/craftrcon.db-wal" ] && echo yes || echo no)" "race: the database files are restored as plain files over the planted links"
+  assert_eq "unit-1.4.2" "$(unit craftrcon.service)" "race: the service file is the previous one"
+  bk="$(find "$SB/backups/craftrcon" -mindepth 1 -maxdepth 1 -name '*-1.4.2' | head -n 1)"
+  assert_contains "CraftRCON 1.4.2 was restored" "$(cat "$bk/update.log" 2>/dev/null)" "race: the report is in the root-only backup"
+  rm -rf "$TMP/victim" "$TMP/victimdir"
 else
   echo "  (skipped: this system cannot create symbolic links)"
 fi
@@ -283,8 +358,8 @@ fi
 echo "sandbox: successful update"
 mk_sandbox
 with_proxy
-mkdir -p "$SB/data/backups/keep-me"
-for d in 20260101-000000-0.1.0 20260102-000000-0.1.1 20260103-000000-0.1.2 20260104-000000-0.1.3 20260105-000000-0.1.4 20260106-000000-0.1.5; do mkdir -p "$SB/data/backups/$d"; done
+mkdir -p "$SB/backups/craftrcon/keep-me"
+for d in 20260101-000000-0.1.0 20260102-000000-0.1.1 20260103-000000-0.1.2 20260104-000000-0.1.3 20260105-000000-0.1.4 20260106-000000-0.1.5; do mkdir -p "$SB/backups/craftrcon/$d"; done
 key_before="$(cksum <"$SB/data/secret.key")"
 cfg_before="$(cksum <"$SB/etc/config.json")"
 out="$(sb_run '' --yes)"
@@ -307,15 +382,15 @@ assert_contains '"firewall": [{ "tool": "ufw", "port": 8080 }]' "$inst" "install
 assert_eq "no" "$(exists "$SB/opt/installed.json.tmp")" "installed.json is written through a temp file + rename (none left)"
 assert_eq "$key_before|$cfg_before" "$(cksum <"$SB/data/secret.key")|$(cksum <"$SB/etc/config.json")" "secret.key and config.json untouched"
 assert_eq "old-db" "$(cat "$SB/data/craftrcon.db")" "the database is kept"
-bk="$(find "$SB/data/backups" -mindepth 1 -maxdepth 1 -name '*-1.4.2' | head -n 1)"
+bk="$(find "$SB/backups/craftrcon" -mindepth 1 -maxdepth 1 -name '*-1.4.2' | head -n 1)"
 assert_eq "yes" "$([ -n "$bk" ] && echo yes || echo no)" "a backup folder <date>-1.4.2 exists"
 assert_eq "craftrcon.db craftrcon.db-wal config.json installed.json craftrcon.unit craftrcon-proxy.unit " "$(for f in craftrcon.db craftrcon.db-wal config.json installed.json craftrcon.unit craftrcon-proxy.unit; do [ -f "$bk/$f" ] && printf '%s ' "$f"; done)" "the backup has the database (+ WAL), config.json, installed.json and the service files"
 assert_eq "unit-1.4.2|proxy-old" "$(cat "$bk/craftrcon.unit")|$(cat "$bk/craftrcon-proxy.unit")" "the backup has the previous service files"
 assert_eq "no" "$(exists "$bk/secret.key")" "secret.key is not copied into the backup"
 assert_contains '"version": "1.4.2"' "$(cat "$bk/installed.json")" "the backup has the previous installed.json"
-assert_eq "" "$(find "$SB/data/backups" -mindepth 1 -maxdepth 1 -name '.partial-*')" "no unfinished (.partial) backup is left"
-assert_eq "5|yes" "$(find "$SB/data/backups" -mindepth 1 -maxdepth 1 -name '2*' | wc -l | tr -d ' ')|$(exists "$SB/data/backups/keep-me")" "only the 5 newest backups are kept"
-assert_eq "no" "$(exists "$SB/data/backups/20260101-000000-0.1.0")" "the oldest backup is deleted"
+assert_eq "" "$(find "$SB/backups/craftrcon" -mindepth 1 -maxdepth 1 -name '.partial-*')" "no unfinished (.partial) backup is left"
+assert_eq "5|yes" "$(find "$SB/backups/craftrcon" -mindepth 1 -maxdepth 1 -name '2*' | wc -l | tr -d ' ')|$(exists "$SB/backups/craftrcon/keep-me")" "only the 5 newest backups are kept"
+assert_eq "no" "$(exists "$SB/backups/craftrcon/20260101-000000-0.1.0")" "the oldest backup is deleted"
 assert_contains "1.4.2 → 1.5.0" "$out" "the result shows old → new"
 assert_contains "CraftRCON updated" "$out" "the result says it was updated"
 assert_contains ":8123" "$out" "the URL uses the configured port"
@@ -334,7 +409,7 @@ assert_eq "stop|deps|start 1.6.0|stop|start 1.5.0|start proxy" "$(calls)" "rollb
 assert_contains "failed while: Starting the new version" "$out" "the failing step is named"
 assert_contains "CraftRCON 1.5.0 was restored" "$out" "says the previous version was restored"
 assert_contains "changes made while the new version was running were discarded" "$out" "says the new version's changes were discarded"
-bk="$(find "$SB/data/backups" -mindepth 1 -maxdepth 1 -name '*-1.5.0' | head -n 1)"
+bk="$(find "$SB/backups/craftrcon" -mindepth 1 -maxdepth 1 -name '*-1.5.0' | head -n 1)"
 assert_contains "Backup of the data: $bk" "$out" "the backup path is shown"
 assert_contains "also saved in $bk/update.log" "$out" "the report location is shown"
 assert_contains "CraftRCON 1.5.0 was restored" "$(cat "$bk/update.log" 2>/dev/null)" "the report is saved in update.log"
@@ -374,7 +449,7 @@ out="$(SIG_IN_ROLLBACK=1 sb_run '' --yes)"
 echo 'server' >"$COPY/src/server.js"
 assert_contains "rc=1" "$out" "signals during the rollback: exits 1"
 assert_eq "1.4.2|1.4.2|old-db|no" "$(cat "$SB/opt/app/VERSION")|$(cat "$SB.running" 2>/dev/null)|$(cat "$SB/data/craftrcon.db")|$(exists "$SB/opt/app.prev")" "signals during the rollback: app and database restored, previous version running"
-bk="$(find "$SB/data/backups" -mindepth 1 -maxdepth 1 -name '*-1.4.2' | head -n 1)"
+bk="$(find "$SB/backups/craftrcon" -mindepth 1 -maxdepth 1 -name '*-1.4.2' | head -n 1)"
 assert_contains "CraftRCON 1.4.2 was restored" "$(cat "$bk/update.log" 2>/dev/null)" "signals during the rollback: the report is in update.log"
 
 echo "sandbox: the new version cannot be stopped -> the database is not restored"
@@ -411,7 +486,7 @@ rm -f "$SB/data/craftrcon.db-wal"
 printf '{\n  "port": 8123,\n  "dataDir": "%s"\n}\n' "$SB/data2" >"$SB/etc/config.json"
 out="$(sb_run '' --yes)"
 assert_contains "rc=0" "$out" "update with another dataDir exits 0"
-bk="$(find "$SB/data/backups" -mindepth 1 -maxdepth 1 -name '*-1.4.2' | head -n 1)"
+bk="$(find "$SB/backups/craftrcon" -mindepth 1 -maxdepth 1 -name '*-1.4.2' | head -n 1)"
 assert_eq "old-db" "$(cat "$bk/craftrcon.db" 2>/dev/null)" "the database is backed up from config.json's dataDir"
 
 finish

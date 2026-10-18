@@ -756,9 +756,14 @@ action_uninstall() {
   if [ "$purge" = 1 ]; then
     rm -rf "$DATA_DIR"
     REMOVED+=("$(msg RM_DATA "$DATA_DIR")")
+    if [ -e "$BACKUP_ROOT" ] || [ -L "$BACKUP_ROOT" ]; then
+      rm -rf "$BACKUP_ROOT"
+      REMOVED+=("$(msg RM_BACKUPS "$BACKUP_ROOT")")
+    fi
     if delete_service_user; then REMOVED+=("$(msg RM_USER "$SVC_USER")"); fi
   else
     if [ -e "$DATA_DIR" ]; then KEPT+=("$(msg KEPT_DATA "$DATA_DIR" "$DATA_DIR")"); fi
+    if [ -e "$BACKUP_ROOT" ]; then KEPT+=("$(msg KEPT_BACKUPS "$BACKUP_ROOT" "$BACKUP_ROOT")"); fi
     if id -u "$SVC_USER" >/dev/null 2>&1; then KEPT+=("$(msg KEPT_USER "$SVC_USER")"); fi
   fi
   rm -rf "$OPT_DIR"

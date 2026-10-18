@@ -30,6 +30,7 @@ APP_DIR=/opt/craftrcon/app
 NODE_DIR=/opt/craftrcon/node
 DATA_DIR=/var/lib/craftrcon
 CONF_DIR=/etc/craftrcon
+BACKUP_ROOT=/var/backups/craftrcon # update backups: outside DATA_DIR, which the service user owns (R16)
 SVC=craftrcon
 INSTALLED_FILE="${INSTALLED_FILE:-$OPT_DIR/installed.json}"
 

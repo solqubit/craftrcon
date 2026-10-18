@@ -19,8 +19,11 @@
 # previous version; then it explains what failed (also in update.log in the backup folder)
 # and exits 1. If the rollback itself fails, it prints the exact manual recovery steps.
 #
-# The data folder belongs to the service user, so nothing there is trusted: symbolic links
-# are refused, never followed (backups live in a root-only folder, restores are renames).
+# The data folder belongs to the service user, so nothing there is trusted: its owner can
+# rename entries and plant links at any time. Backups live outside it, in the root-only
+# BACKUP_ROOT (/var/backups/craftrcon, R16); database files that are links or have extra
+# hard links are refused; copies out of it never follow links; restores into it are staged
+# in the root-only backup and renamed into place (a rename never follows a link).
 # It never touches config.json, secret.key, the panel password or the saved servers.
 set -Eeuo pipefail
 
@@ -54,7 +57,6 @@ LOGS_HINT=''
 DB_DIR=''           # where the database lives (config.json dataDir, else DATA_DIR)
 APP_PREV=''
 NODE_PREV=''
-BACKUP_ROOT=''
 BACKUP_DIR=''
 BACKUP_PARTIAL=''   # the backup while it is being written (a name prune never matches)
 UPDATE_LOG=''
@@ -101,7 +103,6 @@ parse_args() {
 set_paths() {
   APP_PREV="$APP_DIR.prev"
   NODE_PREV="$NODE_DIR.prev"
-  BACKUP_ROOT="$DATA_DIR/backups"
 }
 
 # config_data_dir: dataDir from config.json when it is an absolute path, else DATA_DIR.
@@ -163,13 +164,27 @@ engines_node_min() {
 # owned_by_root PATH (the path itself, not a link target).
 owned_by_root() { [ "$(stat -c %u -- "$1" 2>/dev/null)" = 0 ]; }
 
-# safe_file PATH: a regular file, not a symbolic link.
-safe_file() { [ -f "$1" ] && [ ! -L "$1" ]; }
+# safe_file PATH: a regular file, not a symbolic link, without other hard links (a hard
+# link to a root file would otherwise be copied as if it were the database).
+safe_file() { [ -f "$1" ] && [ ! -L "$1" ] && [ "$(stat -c %h -- "$1" 2>/dev/null)" = 1 ]; }
+
+# root_only_dir PATH: a folder (not a link) owned by root that only root can write to, so
+# nobody else can rename or replace what is inside.
+root_only_dir() {
+  local _m
+  [ -d "$1" ] && [ ! -L "$1" ] && owned_by_root "$1" || return 1
+  _m="$(stat -c %a -- "$1" 2>/dev/null)" || return 1
+  (((8#$_m & 8#022) == 0))
+}
+
+# backup_base: the folder that holds BACKUP_ROOT (/var/backups).
+backup_base() { dirname "$BACKUP_ROOT"; }
 
 # check_data_paths: the data folder is writable by the service user, so a compromised
-# panel could plant symbolic links there for root to follow. Refuses (dies) unless the
-# database files are plain files and the backup folder, if present, is a root-owned
-# folder. Run before any change, and again with the panel stopped.
+# panel could plant links there for root to follow. Refuses (dies) unless the database
+# files are plain files with one link each, and the backup folders that already exist
+# (/var/backups, /var/backups/craftrcon) are root-only. Run before any change, and again
+# with the panel stopped.
 check_data_paths() {
   local _f
   if ! safe_file "$DB_DIR/craftrcon.db"; then
@@ -183,11 +198,18 @@ check_data_paths() {
       safe_file "$DB_DIR/$_f" || die ERR_UPDATE_UNSAFE_PATH "$DB_DIR/$_f" "$DB_DIR/$_f"
     fi
   done
-  if [ -e "$BACKUP_ROOT" ] || [ -L "$BACKUP_ROOT" ]; then
-    if [ -L "$BACKUP_ROOT" ] || [ ! -d "$BACKUP_ROOT" ] || ! owned_by_root "$BACKUP_ROOT"; then
-      die ERR_UPDATE_UNSAFE_PATH "$BACKUP_ROOT" "$BACKUP_ROOT"
+  for _f in "$(backup_base)" "$BACKUP_ROOT"; do
+    if [ -e "$_f" ] || [ -L "$_f" ]; then
+      root_only_dir "$_f" || die ERR_UPDATE_UNSAFE_PATH "$_f" "$_f"
     fi
-  fi
+  done
+}
+
+# ensure_root_dir PATH MODE: creates PATH (mkdir never follows a link planted there) and
+# dies unless it is then a root-only folder.
+ensure_root_dir() {
+  if [ ! -e "$1" ] && [ ! -L "$1" ]; then mkdir -m "$2" "$1"; fi
+  root_only_dir "$1" || die ERR_UPDATE_UNSAFE_PATH "$1" "$1"
 }
 
 check_update_system() {
@@ -258,13 +280,9 @@ proxy_installed() { [ -x "$CADDY_BIN" ] && [ -f "$CADDYFILE" ] && [ -e "$(_svc_p
 make_backup() {
   local _f _name _n
   check_data_paths # again: the panel is stopped now
-  if [ ! -e "$BACKUP_ROOT" ] && [ ! -L "$BACKUP_ROOT" ]; then
-    mkdir -m 0700 "$BACKUP_ROOT" # (fails on anything planted there meanwhile)
-  fi
-  if [ -L "$BACKUP_ROOT" ] || [ ! -d "$BACKUP_ROOT" ]; then die ERR_UPDATE_UNSAFE_PATH "$BACKUP_ROOT" "$BACKUP_ROOT"; fi
-  chown -h root:root "$BACKUP_ROOT"
-  owned_by_root "$BACKUP_ROOT" || die ERR_UPDATE_UNSAFE_PATH "$BACKUP_ROOT" "$BACKUP_ROOT"
-  chmod 0700 "$BACKUP_ROOT"
+  ensure_root_dir "$(backup_base)" 0755
+  ensure_root_dir "$BACKUP_ROOT" 0700
+  chmod 0700 "$BACKUP_ROOT" # (root-only parent: nobody else can swap it)
   _name="$(date +%Y%m%d-%H%M%S)-$OLD_VERSION"
   while [ -e "$BACKUP_ROOT/$_name" ] || [ -e "$BACKUP_ROOT/.partial-$_name" ]; do # two updates within one second
     sleep 1
@@ -272,9 +290,13 @@ make_backup() {
   done
   BACKUP_PARTIAL="$BACKUP_ROOT/.partial-$_name"
   mkdir -m 0700 "$BACKUP_PARTIAL"
-  chown -h root:root "$BACKUP_PARTIAL"
+  # From the data folder: -P copies a link swapped in after the check as a link (never its
+  # target); a copy that is not a plain file is refused.
   for _f in "${DB_FILES[@]}"; do
-    if safe_file "$DB_DIR/$_f"; then cp -p "$DB_DIR/$_f" "$BACKUP_PARTIAL/$_f"; fi
+    if safe_file "$DB_DIR/$_f"; then
+      cp -P -p "$DB_DIR/$_f" "$BACKUP_PARTIAL/$_f"
+      safe_file "$BACKUP_PARTIAL/$_f" || die ERR_UPDATE_UNSAFE_PATH "$DB_DIR/$_f" "$DB_DIR/$_f"
+    fi
   done
   [ -f "$BACKUP_PARTIAL/craftrcon.db" ] || die ERR_UPDATE_NO_DB "$DB_DIR/craftrcon.db"
   if [ -f "$CONFIG_FILE" ]; then cp -p "$CONFIG_FILE" "$BACKUP_PARTIAL/config.json"; fi
@@ -297,7 +319,7 @@ make_backup() {
 prune_backups() {
   local _d _all=() _i _drop
   for _d in "$BACKUP_ROOT"/*; do
-    [ -d "$_d" ] && [ ! -L "$_d" ] || continue
+    [ -d "$_d" ] || continue
     [ "$_d" != "$BACKUP_DIR" ] || continue
     [[ "${_d##*/}" =~ ^[0-9]{8}-[0-9]{6}-[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
     _all+=("$_d")
@@ -312,12 +334,15 @@ prune_backups() {
 }
 
 # restore_db: puts the backed-up database files back (the panel is stopped). Returns 2 when
-# the backup has no database. Copies are staged inside the root-only backup folder and
-# renamed into place: a rename replaces a planted symbolic link, it never follows it. A
-# -wal or -shm the new version left is removed (SQLite would apply it to the old database).
+# the backup has no database, 3 when the database folder is on another filesystem (a
+# rename could not be used). Copies are staged inside the root-only backup folder and
+# renamed into place: a rename replaces whatever was planted at that name, it never
+# follows a link. A -wal or -shm the new version left is removed (SQLite would apply it to
+# the old database).
 restore_db() {
   local _f
   [ -f "$BACKUP_DIR/craftrcon.db" ] || return 2
+  [ "$(stat -c %d -- "$BACKUP_DIR")" = "$(stat -c %d -- "$DB_DIR")" ] || return 3
   rm -f "$DB_DIR/craftrcon.db-wal" "$DB_DIR/craftrcon.db-shm" || return 1
   for _f in "${DB_FILES[@]}"; do
     [ -f "$BACKUP_DIR/$_f" ] || continue
@@ -517,6 +542,7 @@ rollback() {
       case "$_rc" in
         0) DB_RESTORED=1 ;;
         2) _problems+=("$(msg RB_DB_MISSING)") ;;
+        3) _problems+=("$(msg RB_DB_OTHER_FS)") ;;
         *) _problems+=("$(msg RB_DB)") ;;
       esac
     fi
