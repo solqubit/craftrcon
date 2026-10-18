@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Unit and integration tests of the panel on the oldest supported Node and the latest LTS line.
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22.13.x', '24.x']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  # ShellCheck on every shell script, then the shell unit tests (no containers needed).
+  shell:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: ShellCheck
+        run: shellcheck install.sh update.sh scripts/*.sh scripts/lib/*.sh test/shell/*.sh
+      - name: Shell unit tests
+        run: npm run test:shell
+
+  # Real installs and updates inside a container of each tested distro.
+  install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [debian12, ubuntu24, rocky9, fedora]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fresh install, password, repair and uninstall (${{ matrix.distro }})
+        run: bash test/shell/install-in-container.sh ${{ matrix.distro }}
+      - name: Update, same version, downgrade refusal and rollback (${{ matrix.distro }})
+        run: bash test/shell/update-in-container.sh ${{ matrix.distro }}
+
+  # Every change to main must raise VERSION, because ./update.sh decides by version.
+  version-bump:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: VERSION must be higher than on main
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin main
+          base="$(git show origin/main:VERSION | tr -d '[:space:]')"
+          head="$(tr -d '[:space:]' < VERSION)"
+          # shellcheck source=scripts/lib/common.sh
+          . scripts/lib/common.sh
+          cmp="$(version_cmp "$head" "$base")"
+          if [ "$cmp" != 1 ]; then
+            echo "::error file=VERSION::VERSION is $head but main has $base. Raise it (for example to the next patch version) in this pull request."
+            exit 1
+          fi
+          echo "VERSION $base -> $head"
+
+  # public/vendor/ must be exactly what `npm run vendor` produces from the lockfile.
+  vendored:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: npm
+      - run: npm ci
+      - run: npm run vendor
+      - name: public/vendor matches the lockfile
+        run: git diff --exit-code public/vendor

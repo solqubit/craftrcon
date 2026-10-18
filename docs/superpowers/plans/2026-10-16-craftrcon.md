@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Construir CraftRCON, un panel web de código abierto para administrar servidores de Minecraft por RCON, con su instalador `./install` y su actualizador `./update` para Linux.
+**Goal:** Construir CraftRCON, un panel web de código abierto para administrar servidores de Minecraft por RCON, con su instalador `./install.sh` y su actualizador `./update.sh` para Linux.
 
 **Architecture:**
 - **Backend:** Node.js (ESM) con Fastify. Guarda todo en SQLite (`node:sqlite`) y habla con los servidores de Minecraft solo por red, con un cliente RCON y Server List Ping propios.
@@ -39,7 +39,7 @@
   - Muestras de jugadores: cada 60 s, se guardan 7 días.
   - Historial de comandos: 200 por servidor.
   - Registro de acciones: 90 días.
-  - Respaldos de `./update`: últimos 5.
+  - Respaldos de `./update.sh`: últimos 5.
 - Comandos que piden confirmación por defecto: `stop`, `op`, `deop`, `ban-ip`, `kill @e`, `whitelist off`, `difficulty`.
 - **Colores Obsidian** (variables CSS):
   - `--bg #0b0d10`
@@ -878,7 +878,7 @@ Verificación común de UI: `npm run fake-mc` en una terminal y `npm run dev` en
 - Comportamiento (§5.10, §5.11):
   - **Secciones:** Password (actual / nueva / repetir), Language, Dangerous commands (chips que se pueden quitar y añadir, con botón restaurar defaults), Activity y About.
   - **Activity:** tabla paginada (botón "Load more" con `before`) con filtro por servidor; columnas de fecha local, servidor, origen, acción, detalle y ok.
-  - **About:** versión instalada. Si `updateAvailable`, un aviso con el comando a ejecutar: `git clone https://github.com/solqubit/craftrcon.git && cd craftrcon && sudo ./update`, con un botón para copiarlo.
+  - **About:** versión instalada. Si `updateAvailable`, un aviso con el comando a ejecutar: `git clone https://github.com/solqubit/craftrcon.git && cd craftrcon && sudo ./update.sh`, con un botón para copiarlo.
 
 - [ ] **Step 1:** Implementar.
 - [ ] **Step 2:** `npm test`. Esperado: PASS.
@@ -977,11 +977,11 @@ Todos los scripts:
     15. URL final y, si no hay dominio, el aviso de HTTP sin cifrar.
   - `--non-interactive` toma `CRAFTRCON_PASSWORD`, `CRAFTRCON_PORT` y `CRAFTRCON_DOMAIN`. `--no-service` (solo para CI en contenedores sin init) arranca el panel con `nohup` en segundo plano.
 
-- [ ] **Step 1: Test que falla:** `install-in-container.sh <distro>` construye la imagen, copia el repo y ejecuta `./install --non-interactive --no-service` con `CRAFTRCON_PASSWORD=testpass123`. Después `curl /api/health` debe devolver `ok:true`, y `POST /api/login` con `testpass123` debe devolver 204.
+- [ ] **Step 1: Test que falla:** `install-in-container.sh <distro>` construye la imagen, copia el repo y ejecuta `./install.sh --non-interactive --no-service` con `CRAFTRCON_PASSWORD=testpass123`. Después `curl /api/health` debe devolver `ok:true`, y `POST /api/login` con `testpass123` debe devolver 204.
 - [ ] **Step 2:** Ejecutarlo en `debian12`. Esperado: FAIL.
 - [ ] **Step 3:** Implementar.
 - [ ] **Step 4:** Ejecutarlo en `debian12`, `ubuntu24`, `rocky9` y `fedora`. Esperado: PASS en las 4. `shellcheck` limpio.
-- [ ] **Step 5:** Verificación manual en un VPS o VM con systemd: `sudo ./install` interactivo, el servicio arranca tras reiniciar la máquina y se muestra la URL correcta.
+- [ ] **Step 5:** Verificación manual en un VPS o VM con systemd: `sudo ./install.sh` interactivo, el servicio arranca tras reiniciar la máquina y se muestra la URL correcta.
 - [ ] **Step 6:** Commit `feat(installer): fresh install flow with private Node, service and optional HTTPS`.
 
 ### Tarea 29: Instalación existente: menú, cambio de clave, reparar y desinstalar
@@ -991,7 +991,7 @@ Todos los scripts:
 
 **Interfaces:**
 - Produces (§8.2):
-  - **Si ya está instalado:** muestra la versión instalada y la de la copia. Si la copia es más nueva, ofrece "Run ./update now? [Y/n]" (`exec bash scripts/update.sh`). Luego el menú: 1) cambiar clave, 2) reparar servicio, 3) desinstalar, 4) salir.
+  - **Si ya está instalado:** muestra la versión instalada y la de la copia. Si la copia es más nueva, ofrece "Run ./update.sh now? [Y/n]" (`exec bash scripts/update.sh`). Luego el menú: 1) cambiar clave, 2) reparar servicio, 3) desinstalar, 4) salir.
   - **`--reset-password`:** `read_secret` + `cli.js set-password`; no reinicia el servicio (las sesiones se invalidan en la DB).
   - **Reparar:** `write_service` + `service_enable` + reinicio + `wait_health`.
   - **`--uninstall`:**
@@ -1001,14 +1001,14 @@ Todos los scripts:
     - Cierra las reglas de firewall que se abrieron (guardadas en `installed.json.firewall`).
 
 - [ ] **Step 1: Test que falla** (en el contenedor, tras instalar):
-  - `./install --reset-password --non-interactive` con `CRAFTRCON_PASSWORD=newpass456` → el login con la clave nueva da 204 y con la vieja 401.
-  - `./install --uninstall --non-interactive` → no existe `/opt/craftrcon`, sí existe `/var/lib/craftrcon` (por el default de No).
+  - `./install.sh --reset-password --non-interactive` con `CRAFTRCON_PASSWORD=newpass456` → el login con la clave nueva da 204 y con la vieja 401.
+  - `./install.sh --uninstall --non-interactive` → no existe `/opt/craftrcon`, sí existe `/var/lib/craftrcon` (por el default de No).
 - [ ] **Step 2:** Ejecutar. Esperado: FAIL.
 - [ ] **Step 3:** Implementar.
 - [ ] **Step 4:** Ejecutar en las 4 distros. Esperado: PASS.
 - [ ] **Step 5:** Commit `feat(installer): existing-install menu, password reset, repair and uninstall`.
 
-### Tarea 30: `./update` con respaldo y vuelta atrás automática
+### Tarea 30: `./update.sh` con respaldo y vuelta atrás automática
 
 **Files:**
 - Create: `scripts/update.sh`, `test/shell/update-in-container.sh`
@@ -1016,7 +1016,7 @@ Todos los scripts:
 **Interfaces:**
 - Consumes: `common.sh`, `ensure_node`, `service_*`, `wait_health`.
 - Produces (§8.4, en orden):
-  1. `require_root`. Si no está instalado, `die MSG_NOT_INSTALLED` (sugiere `./install`).
+  1. `require_root`. Si no está instalado, `die MSG_NOT_INSTALLED` (sugiere `./install.sh`).
   2. `NEW=$(cat "$SRC_DIR/VERSION")`, `OLD=$(installed_version)`, `version_cmp`:
      - `0` → `ok MSG_UP_TO_DATE "$OLD"` ("CraftRCON %s is already up to date") y `exit 0` **sin tocar nada**.
      - `-1` → `die MSG_DOWNGRADE_REFUSED "$OLD" "$NEW"`.
@@ -1036,8 +1036,8 @@ Todos los scripts:
 
 - [ ] **Step 1: Tests que fallan** (`update-in-container.sh`):
   1. Instala desde una copia con `VERSION 0.1.0` y crea un servidor vía API.
-  2. `./update` desde la misma copia → mensaje de "up to date", sale con 0 y el `mtime` de `APP_DIR` no cambia.
-  3. Copia con `VERSION 0.2.0` → `./update --yes` sale con 0, `/api/health.version == 0.2.0` y el servidor creado sigue en `GET /api/servers`.
+  2. `./update.sh` desde la misma copia → mensaje de "up to date", sale con 0 y el `mtime` de `APP_DIR` no cambia.
+  3. Copia con `VERSION 0.2.0` → `./update.sh --yes` sale con 0, `/api/health.version == 0.2.0` y el servidor creado sigue en `GET /api/servers`.
   4. Copia con `VERSION 0.1.5` → sale con 1 por downgrade.
   5. Copia con `0.3.0` y `src/server.js` roto a propósito → sale con 1, `/api/health.version == 0.2.0` (rollback) y existe el respaldo.
 - [ ] **Step 2:** Ejecutar. Esperado: FAIL.
@@ -1059,7 +1059,7 @@ Todos los scripts:
   - Job `vendored`: `npm run vendor` y `git diff --exit-code public/vendor` (el archivo incluido coincide con el lockfile).
 - **README.md** (inglés):
   - Qué es, capturas, requisitos y cómo activar RCON en `server.properties` (`enable-rcon=true`, `rcon.port`, `rcon.password`).
-  - Instalación (`git clone` + `sudo ./install`), actualización (`./update`), cambio de clave y desinstalación.
+  - Instalación (`git clone` + `sudo ./install.sh`), actualización (`./update.sh`), cambio de clave y desinstalación.
   - Una sección de seguridad que dice con honestidad qué protege el cifrado (§7).
   - Qué limita RCON (sin chat ni lista de ops).
   - Licencia MIT.

@@ -18,8 +18,8 @@ export class InvalidCommandError extends Error {
 export function createCommands({ db, manager, audit, hub, now = Date.now }) {
   const insertHistory = db.prepare('INSERT INTO command_history (server_id, command, ts) VALUES (?, ?, ?)');
   const trimHistory = db.prepare(
-    `DELETE FROM command_history WHERE server_id = ?1 AND id NOT IN
-       (SELECT id FROM command_history WHERE server_id = ?1 ORDER BY id DESC LIMIT ?2)`,
+    `DELETE FROM command_history WHERE server_id = ? AND id NOT IN
+       (SELECT id FROM command_history WHERE server_id = ? ORDER BY id DESC LIMIT ?)`,
   );
   const selectHistory = db.prepare(
     'SELECT command, ts FROM command_history WHERE server_id = ? ORDER BY id DESC LIMIT ?',
@@ -47,7 +47,7 @@ export function createCommands({ db, manager, audit, hub, now = Date.now }) {
 
     if (origin === 'console') {
       insertHistory.run(serverId, cmd, ts);
-      trimHistory.run(serverId, HISTORY_LIMIT);
+      trimHistory.run(serverId, serverId, HISTORY_LIMIT);
     }
     if (doAudit) {
       audit.log({

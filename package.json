@@ -13,9 +13,9 @@
     "url": "https://github.com/solqubit/craftrcon.git"
   },
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
-    "test": "node --test \"test/**/*.test.js\"",
+    "start": "node --disable-warning=ExperimentalWarning src/server.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch src/server.js",
+    "test": "node --disable-warning=ExperimentalWarning --test \"test/**/*.test.js\"",
     "test:shell": "bash test/shell/run.sh",
     "vendor": "node scripts/vendor.js",
     "fake-mc": "node scripts/dev-fake-server.js",

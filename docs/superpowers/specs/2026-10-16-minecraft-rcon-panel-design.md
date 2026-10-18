@@ -12,7 +12,7 @@ Convención: lo marcado **(decisión de Claude)** lo eligió Claude durante el d
 
 Un panel web para administrar uno o varios servidores de Minecraft a través de RCON, con una consola para ejecutar comandos. Debe ser **bonito, intuitivo y fácil de usar sin dejar de ser útil y potente**. Será **de código abierto**.
 
-Se instala en cualquier Linux con `git clone` + `./install`, sin releases ni binarios precompilados. El instalador pide una clave de acceso y al final muestra la URL del panel.
+Se instala en cualquier Linux con `git clone` + `./install.sh`, sin releases ni binarios precompilados. El instalador pide una clave de acceso y al final muestra la URL del panel.
 
 Éxito para el autor:
 - Instala en un VPS limpio con dos comandos y entra al panel desde el navegador.
@@ -26,7 +26,7 @@ Se instala en cualquier Linux con `git clone` + `./install`, sin releases ni bin
 3. **Dashboard** por servidor con estado, jugadores, versión, TPS, ping y gráfico de jugadores.
 4. **Jugadores, moderación, mundo, anuncios y tareas programadas** (detalle en §5).
 5. **Dos idiomas:** inglés (por defecto) y español, preparado para que la comunidad agregue más.
-6. **Instalador universal** `./install` para distros basadas en Debian, RPM y otras, más un comando `./update` para actualizar una instalación existente desde una copia nueva del proyecto (§8.4).
+6. **Instalador universal** `./install.sh` para distros basadas en Debian, RPM y otras, más un comando `./update.sh` para actualizar una instalación existente desde una copia nueva del proyecto (§8.4).
 
 ### 2.1 Versiones de Minecraft soportadas
 
@@ -38,7 +38,7 @@ Se instala en cualquier Linux con `git clone` + `./install`, sin releases ni bin
 
 ### 2.2 Actualizaciones
 
-Las instalaciones siguen la **rama `main`** (decidido por el autor): para actualizar se descarga `main` y se ejecuta `./update` (§8.4). Por eso `main` debe estar siempre en estado instalable:
+Las instalaciones siguen la **rama `main`** (decidido por el autor): para actualizar se descarga `main` y se ejecuta `./update.sh` (§8.4). Por eso `main` debe estar siempre en estado instalable:
 - Los cambios entran por pull request con CI: pruebas y una instalación de prueba en contenedores.
 - Las migraciones de base de datos deben poder aplicarse desde cualquier commit anterior de `main`.
 
@@ -177,7 +177,7 @@ Se ve en Settings → Activity, con filtro por servidor **(decisión de Claude: 
 - Idioma: inglés por defecto, se recuerda la elección.
 - Lista de comandos que piden confirmación.
 - Registro de actividad.
-- Información de versión: la versión instalada (archivo `VERSION`, §8.4) y, si hay internet, si en `main` hay una versión más nueva **(decisión de Claude)**. Solo informa; la actualización se hace con `./update`.
+- Información de versión: la versión instalada (archivo `VERSION`, §8.4) y, si hay internet, si en `main` hay una versión más nueva **(decisión de Claude)**. Solo informa; la actualización se hace con `./update.sh`.
 
 ### 5.12 Idiomas
 
@@ -217,20 +217,20 @@ Es crítico al ser código abierto y estar expuesto a internet.
   - Nunca se devuelven por la API.
   - Esto protege ante fugas de la base de datos o de backups, no ante un atacante con control total de la máquina; el README lo dice con honestidad.
 - **El servicio no corre como root:** corre como un usuario de sistema dedicado.
-- **Recuperar acceso:** comando de terminal para restablecer la clave (p. ej. `./install --reset-password`).
+- **Recuperar acceso:** comando de terminal para restablecer la clave (p. ej. `./install.sh --reset-password`).
 - **HTTPS:**
   - Sin dominio, el panel corre en HTTP. El instalador **advierte** que la clave viaja sin cifrar y recomienda configurar un dominio con HTTPS.
   - Con dominio, el HTTPS es automático (§8).
 - **Comandos:** se envían tal cual escribe el usuario; no hay ejecución en el sistema operativo.
 
-## 8. Instalación (`./install`)
+## 8. Instalación (`./install.sh`)
 
 Flujo de uso:
 
 ```bash
 git clone https://github.com/solqubit/craftrcon.git
 cd craftrcon
-sudo ./install
+sudo ./install.sh
 ```
 
 ### 8.1 Qué hace en una instalación nueva
@@ -269,16 +269,16 @@ sudo ./install
     La IP pública se averigua con un servicio externo de "cuál es mi IP"; si falla, solo muestra las locales. Con dominio, muestra `https://dominio`.
 
 Mensajes del instalador:
-- **Idioma:** en inglés por defecto. `./install --lang es` los muestra en español **(decisión de Claude)**.
+- **Idioma:** en inglés por defecto. `./install.sh --lang es` los muestra en español **(decisión de Claude)**.
 - **Formato:** claros, con colores y pasos numerados.
 - **Errores:** si algo falla, dicen qué falló y qué hacer.
 
-### 8.2 `./install` sobre una instalación existente
+### 8.2 `./install.sh` sobre una instalación existente
 
-Si `./install` encuentra el panel ya instalado, no reinstala a ciegas:
+Si `./install.sh` encuentra el panel ya instalado, no reinstala a ciegas:
 
 1. Muestra la versión instalada y la versión de la copia desde la que se ejecuta.
-2. Si la copia es más nueva, recomienda `./update` y ofrece ejecutarlo ahí mismo.
+2. Si la copia es más nueva, recomienda `./update.sh` y ofrece ejecutarlo ahí mismo.
 3. Ofrece además un menú:
    - Cambiar la clave de acceso.
    - Reparar el servicio (volver a crear la unidad systemd/OpenRC y reiniciar).
@@ -292,7 +292,7 @@ Atajos no interactivos: `--reset-password` y `--uninstall`.
 - **Objetivo, probadas:** Debian 12/13, Ubuntu 22.04/24.04, Rocky/Alma 9, Fedora reciente.
 - **Mejor esfuerzo:** openSUSE, Arch y Alpine.
 
-### 8.4 `./update`
+### 8.4 `./update.sh`
 
 Pedido por el autor. Sirve para actualizar un panel ya instalado con una copia nueva del proyecto, descargada en cualquier carpeta:
 
@@ -300,7 +300,7 @@ Pedido por el autor. Sirve para actualizar un panel ya instalado con una copia n
 cd /tmp
 git clone https://github.com/solqubit/craftrcon.git
 cd craftrcon
-sudo ./update
+sudo ./update.sh
 ```
 
 **Cómo identifica la versión (decisión de Claude):**
@@ -310,7 +310,7 @@ sudo ./update
 - No depende de git: también funciona con una copia descargada como `.zip`.
 
 **Qué hace:**
-1. Comprueba que se ejecuta como root y que el panel está instalado. Si no lo está, lo dice y sugiere `./install`.
+1. Comprueba que se ejecuta como root y que el panel está instalado. Si no lo está, lo dice y sugiere `./install.sh`.
 2. Compara la versión de la copia con la instalada:
    - **Igual:** dice "CraftRCON 1.4.2 is already up to date", no cambia nada y termina con éxito.
    - **Más nueva:** muestra "1.4.1 → 1.4.2" y pide confirmación (o sigue directo con `--yes`).
