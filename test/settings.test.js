@@ -361,6 +361,27 @@ test('sessions.purgeIdle drops only sessions idle past the limit', () => {
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM sessions').get().n, 1);
 });
 
+test('sessions.check renews last_seen at most once per renewMs, then expires after idleMs', () => {
+  const db = openDb(':memory:');
+  let clock = 1_000_000;
+  const sessions = createSessions(db, { now: () => clock, renewMs: 1000, idleMs: 10_000 });
+  const token = sessions.create();
+  const lastSeen = () => db.prepare('SELECT last_seen FROM sessions').get().last_seen;
+  assert.deepEqual(sessions.check(token), { renewed: false });
+  clock += 999;
+  assert.deepEqual(sessions.check(token), { renewed: false });
+  assert.equal(lastSeen(), 1_000_000);
+  clock += 1;
+  assert.deepEqual(sessions.check(token), { renewed: true });
+  assert.equal(lastSeen(), 1_001_000);
+  clock += 10_000; // exactly idleMs since the renewal: still valid, renewed
+  assert.deepEqual(sessions.check(token), { renewed: true });
+  clock += 10_001;
+  assert.equal(sessions.check(token), null);
+  assert.equal(sessions.check('nope'), null);
+  assert.equal(sessions.validate(token), false);
+});
+
 test('maintenance purges audit older than 90 days and idle sessions', () => {
   const db = openDb(':memory:');
   let clock = Date.now();

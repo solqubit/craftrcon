@@ -59,8 +59,15 @@ export function registerAuth(app) {
     }
     if (request.routeOptions.config?.public === true) return;
 
-    if (!app.services.sessions.validate(sidOf(app, request))) {
+    const sid = sidOf(app, request);
+    const session = app.services.sessions.check(sid);
+    if (!session) {
       return reply.code(401).send({ error: 'unauthorized' });
+    }
+    // Sessions expire after 7 days WITHOUT use: renew the cookie's Max-Age
+    // whenever the server renews the session (at most once per hour).
+    if (session.renewed) {
+      reply.setCookie(SESSION_COOKIE, sid, { ...cookieOptions, maxAge: COOKIE_MAX_AGE_S });
     }
   });
 

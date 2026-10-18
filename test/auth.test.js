@@ -214,6 +214,78 @@ test('using a session refreshes last_seen', async (t) => {
   assert.ok(db.prepare('SELECT last_seen FROM sessions').get().last_seen > old);
 });
 
+// Review I1: the session expires after 7 days WITHOUT use, so the cookie's
+// Max-Age is renewed on use (at most once per hour per session).
+const HOUR = 3600e3;
+const DAY = 24 * HOUR;
+const cookieOf = (res) => {
+  const raw = res.headers['set-cookie'];
+  return Array.isArray(raw) ? raw.join('\n') : raw;
+};
+
+test('a session used on day 6 gets a fresh 7-day cookie and is still valid after day 7', async (t) => {
+  const { app, db, login } = await makeApp();
+  t.after(() => app.close());
+  const headers = await login();
+  const token = headers.cookie.split('=')[1];
+  const loginAt = Date.now() - 6 * DAY; // logged in 6 days ago, last used then
+  db.prepare('UPDATE sessions SET created_at = ?, last_seen = ?').run(loginAt, loginAt);
+  const res = await app.inject({ method: 'GET', url: '/api/me', headers });
+  assert.equal(res.statusCode, 200);
+  const raw = cookieOf(res);
+  assert.ok(raw, 'a used session must get its cookie back');
+  assert.ok(raw.startsWith(`craftrcon_sid=${token};`), 'same token, not a new session');
+  assert.match(raw, /Max-Age=604800/);
+  assert.match(raw, /HttpOnly/);
+  assert.match(raw, /SameSite=Strict/);
+  assert.match(raw, /Path=\//);
+  assert.doesNotMatch(raw, /Secure/);
+  // Day 9 after login (3 days after that use): the cookie (expires day 13) and the
+  // session are both still valid.
+  db.prepare('UPDATE sessions SET last_seen = ?').run(Date.now() - 3 * DAY);
+  assert.equal((await app.inject({ method: 'GET', url: '/api/me', headers })).statusCode, 200);
+});
+
+test('the cookie is not re-sent on every request: at most once per hour', async (t) => {
+  const { app, db, login } = await makeApp();
+  t.after(() => app.close());
+  const headers = await login();
+  for (let i = 0; i < 3; i++) {
+    const res = await app.inject({ method: 'GET', url: '/api/me', headers });
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.headers['set-cookie'], undefined, `request ${i} inside the hour`);
+  }
+  db.prepare('UPDATE sessions SET last_seen = ?').run(Date.now() - 59 * 60e3);
+  assert.equal((await app.inject({ method: 'GET', url: '/api/me', headers })).headers['set-cookie'], undefined);
+  db.prepare('UPDATE sessions SET last_seen = ?').run(Date.now() - HOUR - 1000);
+  const renewed = await app.inject({ method: 'GET', url: '/api/me', headers });
+  assert.match(cookieOf(renewed), /Max-Age=604800/);
+  const after = await app.inject({ method: 'GET', url: '/api/me', headers });
+  assert.equal(after.headers['set-cookie'], undefined, 'renewed once, then quiet for an hour');
+});
+
+test('the renewed cookie is Secure when a domain is configured', async (t) => {
+  const { app, db, login } = await makeApp({ config: { domain: 'panel.test' } });
+  t.after(() => app.close());
+  const headers = await login();
+  db.prepare('UPDATE sessions SET last_seen = ?').run(Date.now() - 2 * HOUR);
+  const res = await app.inject({ method: 'GET', url: '/api/me', headers });
+  assert.match(cookieOf(res), /Secure/);
+  assert.match(cookieOf(res), /SameSite=Strict/);
+});
+
+test('logout after a long pause only clears the cookie', async (t) => {
+  const { app, db, login } = await makeApp();
+  t.after(() => app.close());
+  const headers = await login();
+  db.prepare('UPDATE sessions SET last_seen = ?').run(Date.now() - 2 * DAY);
+  const res = await post(app, '/api/logout', undefined, headers);
+  assert.equal(res.statusCode, 204);
+  const raw = cookieOf(res);
+  assert.match(raw, /craftrcon_sid=;/);
+  assert.doesNotMatch(raw, /craftrcon_sid=[\w-]{43}/);
+});
+
 test('only the token hash is stored', async (t) => {
   const { app, db, login } = await makeApp();
   t.after(() => app.close());
