@@ -179,7 +179,8 @@ node_resolve() { NODE_ACTION=keep; }
 ensure_node() { NODE_BIN="$NODE_DIR/bin/node"; NPM_BIN=true; NODE_VERSION=24.0.0; }
 install_app_deps() { echo deps >>"$SB.calls"; if [ -n "${SIG_IN_DEPS:-}" ]; then kill -HUP $$; fi; [ -z "${DEPS_FAIL:-}" ]; }
 install() { local a=(); while [ "$#" -gt 0 ]; do case "$1" in -o | -g | -m) shift 2 ;; *) a+=("$1"); shift ;; esac; done; command install "${a[@]}"; }
-mkdir() { if [ "$1" = -m ]; then shift 2; fi; command mkdir "$@"; } # (modes: Windows ACLs reject them)
+mkdir() { if [ "$1" = -m ]; then shift 2; fi; command mkdir "$@"; }
+cp() { local rc=0; command cp "$@" || rc=$?; if [ -n "${HARDLINK_IN_CP:-}" ] && [ "${3:-}" = "$DATA_DIR/craftrcon.db" ]; then rm -f "$3"; ln "$VICTIM" "$3"; fi; return "$rc"; } # (modes: Windows ACLs reject them)
 chown() { :; }; public_ip() { :; }; local_ips() { :; }; HEALTH_TIMEOUT=0'
 # The flow checks that curl exists (the stubs never call it): a fake one, so the sandbox
 # does not depend on the host.
@@ -289,6 +290,16 @@ if ln "$TMP/victim" "$SB/data/craftrcon.db" 2>/dev/null && [ "$(stat -c %h "$TMP
   assert_contains "rc=1" "$out" "a hard-linked database: exits 1"
   assert_contains "has extra hard links" "$out" "a hard-linked database: explained"
   assert_eq "|no" "$(calls)|$(exists "$SB/backups/craftrcon")" "a hard-linked database: refused before any change"
+fi
+rm -f "$TMP/victim"
+# The database is replaced by a hard link while it is being copied: another inode -> refused.
+mk_sandbox
+echo 'victim' >"$TMP/victim"
+out="$(HARDLINK_IN_CP=1 VICTIM="$TMP/victim" sb_run '' --yes)"
+if [ "$(stat -c %h "$TMP/victim")" = 2 ]; then
+  assert_contains "rc=1" "$out" "a database swapped for a hard link during the copy: exits 1"
+  assert_contains "$SB/data/craftrcon.db is not safe to use" "$out" "a database swapped for a hard link during the copy: explained"
+  assert_eq "1.4.2" "$(cat "$SB/opt/app/VERSION")" "a database swapped for a hard link during the copy: rolled back before replacing anything"
 fi
 rm -f "$TMP/victim"
 # Restores are staged inside the (root-only) backup and renamed into the data folder.

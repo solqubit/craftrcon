@@ -278,7 +278,7 @@ proxy_installed() { [ -x "$CADDY_BIN" ] && [ -f "$CADDYFILE" ] && [ -e "$(_svc_p
 # config.json, installed.json and the service files. Never secret.key: it stays where it
 # is. Written under a temporary name and renamed when complete.
 make_backup() {
-  local _f _name _n
+  local _f _name _n _id
   check_data_paths # again: the panel is stopped now
   ensure_root_dir "$(backup_base)" 0755
   ensure_root_dir "$BACKUP_ROOT" 0700
@@ -291,11 +291,15 @@ make_backup() {
   BACKUP_PARTIAL="$BACKUP_ROOT/.partial-$_name"
   mkdir -m 0700 "$BACKUP_PARTIAL"
   # From the data folder: -P copies a link swapped in after the check as a link (never its
-  # target); a copy that is not a plain file is refused.
+  # target); the source must be the same single-link inode before and after the copy (a
+  # hard link swapped in meanwhile is another inode), and the copy a plain file.
   for _f in "${DB_FILES[@]}"; do
     if safe_file "$DB_DIR/$_f"; then
+      _id="$(stat -c %i:%h -- "$DB_DIR/$_f")"
       cp -P -p "$DB_DIR/$_f" "$BACKUP_PARTIAL/$_f"
-      safe_file "$BACKUP_PARTIAL/$_f" || die ERR_UPDATE_UNSAFE_PATH "$DB_DIR/$_f" "$DB_DIR/$_f"
+      if [ "$(stat -c %i:%h -- "$DB_DIR/$_f" 2>/dev/null)" != "$_id" ] || ! safe_file "$BACKUP_PARTIAL/$_f"; then
+        die ERR_UPDATE_UNSAFE_PATH "$DB_DIR/$_f" "$DB_DIR/$_f"
+      fi
     fi
   done
   [ -f "$BACKUP_PARTIAL/craftrcon.db" ] || die ERR_UPDATE_NO_DB "$DB_DIR/craftrcon.db"
