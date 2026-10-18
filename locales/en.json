@@ -255,6 +255,65 @@
       "use": "Edit “{command}” in the input"
     }
   },
+  "dashboard": {
+    "subtitle": "Live status of {name}.",
+    "loadFailed": {
+      "title": "Couldn't load the status",
+      "message": "Check your connection and try again."
+    },
+    "tiles": {
+      "players": "Players",
+      "tps": "TPS",
+      "version": "Version",
+      "ping": "Ping"
+    },
+    "tpsAvg": "5 min {five} · 15 min {fifteen}",
+    "tpsLevel": {
+      "good": "healthy",
+      "warn": "degraded",
+      "bad": "critical"
+    },
+    "motd": "Message of the day",
+    "offline": {
+      "title": "Server offline",
+      "hint": "CraftRCON checks again every few seconds.",
+      "retry": "Check again",
+      "error": {
+        "ECONNREFUSED": "Connection refused. The server isn't running, or the game port is wrong.",
+        "ETIMEDOUT": "The connection timed out. Check the host, the game port and any firewall.",
+        "EHOSTUNREACH": "The host can't be reached. Check the address and the network.",
+        "ENOTFOUND": "That host name doesn't exist. Check the spelling.",
+        "TIMEOUT": "The server didn't answer in time. It may be starting up or overloaded.",
+        "PROTOCOL": "The server answered with something that isn't a Minecraft status. Check the game port."
+      }
+    },
+    "chart": {
+      "title": "Players over time",
+      "range": "Time range",
+      "range24h": "24 h",
+      "range7d": "7 days",
+      "rangeName": {
+        "24h": "24 hours",
+        "7d": "7 days"
+      },
+      "summary": "Players online over the last {range}: peak {peak}, latest {latest}.",
+      "tooltip": "{count} online",
+      "empty": "No data yet. The panel records the player count every minute while the server is online.",
+      "loadFailed": "Couldn't load the player history."
+    },
+    "console": {
+      "title": "Console",
+      "open": "Open console",
+      "empty": "Run a command to see its reply here.",
+      "input": "Quick command"
+    },
+    "players": {
+      "title": "Online players",
+      "empty": "Nobody is online.",
+      "loadFailed": "Couldn't load the players.",
+      "raw": "The server's answer wasn't recognized:"
+    }
+  },
   "cmd": {
     "advancement": "Grant or revoke advancements",
     "attribute": "Read or change an entity attribute",

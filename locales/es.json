@@ -255,6 +255,65 @@
       "use": "Editar “{command}” en la caja de texto"
     }
   },
+  "dashboard": {
+    "subtitle": "Estado en vivo de {name}.",
+    "loadFailed": {
+      "title": "No se pudo cargar el estado",
+      "message": "Revisa tu conexión e inténtalo de nuevo."
+    },
+    "tiles": {
+      "players": "Jugadores",
+      "tps": "TPS",
+      "version": "Versión",
+      "ping": "Ping"
+    },
+    "tpsAvg": "5 min {five} · 15 min {fifteen}",
+    "tpsLevel": {
+      "good": "saludable",
+      "warn": "degradado",
+      "bad": "crítico"
+    },
+    "motd": "Mensaje del día",
+    "offline": {
+      "title": "Servidor sin conexión",
+      "hint": "CraftRCON vuelve a comprobarlo cada pocos segundos.",
+      "retry": "Comprobar de nuevo",
+      "error": {
+        "ECONNREFUSED": "Conexión rechazada. El servidor no está en marcha o el puerto del juego es incorrecto.",
+        "ETIMEDOUT": "Se agotó el tiempo de la conexión. Revisa el host, el puerto del juego y cualquier firewall.",
+        "EHOSTUNREACH": "No se puede llegar al host. Revisa la dirección y la red.",
+        "ENOTFOUND": "Ese nombre de host no existe. Revisa que esté bien escrito.",
+        "TIMEOUT": "El servidor no respondió a tiempo. Puede estar iniciándose o sobrecargado.",
+        "PROTOCOL": "El servidor respondió algo que no es un estado de Minecraft. Revisa el puerto del juego."
+      }
+    },
+    "chart": {
+      "title": "Jugadores en el tiempo",
+      "range": "Rango de tiempo",
+      "range24h": "24 h",
+      "range7d": "7 días",
+      "rangeName": {
+        "24h": "24 horas",
+        "7d": "7 días"
+      },
+      "summary": "Jugadores en línea, rango de {range}: máximo {peak}, último valor {latest}.",
+      "tooltip": "{count} en línea",
+      "empty": "Aún no hay datos. El panel registra la cantidad de jugadores cada minuto mientras el servidor está en línea.",
+      "loadFailed": "No se pudo cargar el historial de jugadores."
+    },
+    "console": {
+      "title": "Consola",
+      "open": "Abrir consola",
+      "empty": "Ejecuta un comando para ver aquí su respuesta.",
+      "input": "Comando rápido"
+    },
+    "players": {
+      "title": "Jugadores en línea",
+      "empty": "No hay nadie en línea.",
+      "loadFailed": "No se pudieron cargar los jugadores.",
+      "raw": "No se reconoció la respuesta del servidor:"
+    }
+  },
   "cmd": {
     "advancement": "Da o quita logros (advancements)",
     "attribute": "Consulta o cambia un atributo de una entidad",

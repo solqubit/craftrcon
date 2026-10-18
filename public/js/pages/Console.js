@@ -10,7 +10,7 @@
 import { Component, html, useEffect, useLayoutEffect, useMemo, useRef, useState } from '../../vendor/htm-preact.js';
 import { api, openLive } from '../api.js';
 import { t } from '../i18n.js';
-import { activeServer, setServers, store, useStore } from '../store.js';
+import { useStore } from '../store.js';
 import { DEFAULT_DANGEROUS_COMMANDS } from '../data/dangerous.js';
 import { applySuggestion, lastToken, signature, suggest } from '../lib/autocomplete.js';
 import { isDangerous } from '../lib/dangerous.js';
@@ -22,64 +22,27 @@ import {
   exportFilename,
   failSent,
   formatExport,
-  formatTime,
-  isErrorOutput,
   matchesFilter,
   normalizeCommand,
   resolveSent,
-  splitOutput,
-  trimToLines,
   uniqueHistory,
   walkHistory,
 } from '../lib/console.js';
+import { getScreen, nextSendId, updateScreen } from '../lib/screens.js';
+import { ActiveServer } from '../components/ActiveServer.js';
 import { Favorites, History } from '../components/ConsoleSide.js';
 import { Confirm } from '../components/Confirm.js';
+import { Entry } from '../components/ConsoleEntry.js';
 import { FavoriteForm } from '../components/FavoriteForm.js';
 import { Icon } from '../components/Icon.js';
-import { McText } from '../components/McText.js';
-import { ServerForm } from '../components/ServerForm.js';
 import { toast } from '../components/Toast.js';
-import { NoServers } from './Servers.js';
 
 const PLAYERS_POLL_MS = 30_000;
 const HISTORY_LIMIT = 200;
 const EXAMPLES = ['list', 'help', 'seed'];
 const LIST_ID = 'console-suggestions';
 
-const logs = new Map(); // serverId -> entries shown on its screen
-let nextSendId = 1;
-
 // ---------- Output ----------
-
-function Entry({ entry }) {
-  const time = formatTime(entry.ts);
-  const tagged = entry.origin === 'task' || entry.origin === 'ui';
-  const failed = !entry.pending && !entry.ok;
-  const lines = !entry.pending && entry.ok && entry.output ? splitOutput(entry.output) : [];
-  const errorReply = lines.length > 0 && isErrorOutput(entry.output);
-
-  return html`<div class="cl-entry">
-    <div class="cl-line cl-cmd">
-      <span class="cl-ts">${time}</span>
-      <span class="cl-body"><span class="cl-prompt" aria-hidden="true">›</span>${entry.command}</span>
-      ${tagged && html`<span class="cl-tag" title=${t(`console.originTitle.${entry.origin}`)}>${t(`console.origin.${entry.origin}`)}</span>`}
-      ${entry.pending
-        ? html`<span class="spinner cl-spinner" aria-hidden="true"></span><span class="sr-only">${t('console.running')}</span>`
-        : entry.durationMs != null && html`<span class="cl-meta">${t('console.durationMs', { ms: entry.durationMs })}</span>`}
-    </div>
-    ${failed &&
-    html`<div class="cl-line cl-err">
-      <span class="cl-ts" aria-hidden="true"></span>
-      <span class="cl-body">${t(errorKey(entry.error))}</span>
-    </div>`}
-    ${lines.map(
-      (line) => html`<div class=${`cl-line ${errorReply ? 'cl-err' : ''}`}>
-        <span class="cl-ts" aria-hidden="true"></span>
-        <span class="cl-body"><${McText} text=${line} /></span>
-      </div>`,
-    )}
-  </div>`;
-}
 
 // Up to 1000 lines: redraw only when the log (or the language) changes, not
 // on every keystroke in the input.
@@ -134,13 +97,11 @@ function ConsoleView({ server }) {
 
   // Output log (source of truth: the module cache, so an answer that lands
   // after leaving the page is still there on return).
-  const [entries, setEntries] = useState(() => logs.get(id) ?? []);
+  const [entries, setEntries] = useState(() => getScreen(id));
   const update = (fn) => {
-    const previous = logs.get(id) ?? [];
-    const next = trimToLines(fn(previous));
-    if (next === previous) return;
-    logs.set(id, next);
-    setEntries(next);
+    const previous = getScreen(id);
+    const next = updateScreen(id, fn);
+    if (next !== previous) setEntries(next);
   };
 
   const [history, setHistory, loadHistory] = useList(`/api/servers/${id}/history`, uniqueHistory);
@@ -277,7 +238,7 @@ function ConsoleView({ server }) {
 
   // ----- running commands -----
   async function execute(command, fromInput) {
-    const sendId = nextSendId++;
+    const sendId = nextSendId();
     stick.current = true;
     update((log) => addPending(log, { id: sendId, command, ts: Date.now() }));
     if (fromInput) fill('');
@@ -573,33 +534,5 @@ function ConsoleView({ server }) {
 }
 
 export function Console() {
-  const state = useStore();
-  const server = activeServer(state);
-  const [adding, setAdding] = useState(false);
-
-  async function serverAdded(saved) {
-    setAdding(false);
-    toast(t('servers.toast.created', { name: saved.name }));
-    try {
-      setServers(await api('/api/servers'));
-      store.set({ activeServerId: saved.id });
-    } catch (err) {
-      if (err.status !== 401) toast(t('errors.serversLoad'), { type: 'error' });
-    }
-  }
-
-  if (server) return html`<${ConsoleView} key=${server.id} server=${server} />`;
-
-  return html`<div class="page">
-    <header class="page-head">
-      <h1 class="page-title">${t('nav.console')}</h1>
-    </header>
-    ${state.servers === null
-      ? html`<div class="page-loading" role="status">
-          <span class="spinner spinner-lg" aria-hidden="true"></span>
-          <span>${t('common.loading')}</span>
-        </div>`
-      : html`<${NoServers} onAdd=${() => setAdding(true)} />`}
-    ${adding && html`<${ServerForm} server=${null} onClose=${() => setAdding(false)} onSaved=${serverAdded} />`}
-  </div>`;
+  return html`<${ActiveServer} titleKey="nav.console" view=${(server) => html`<${ConsoleView} key=${server.id} server=${server} />`} />`;
 }
