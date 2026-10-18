@@ -690,5 +690,134 @@
       "title": "Announcements",
       "text": "Send a message to everyone online, with colors and formats."
     }
+  },
+  "tasks": {
+    "subtitle": "Scheduled commands for {name}",
+    "add": "New task",
+    "note": "Tasks only run while the CraftRCON panel is running, and times use the time zone of the Linux server it runs on.",
+    "loadFailed": {
+      "title": "Couldn't load the tasks"
+    },
+    "refreshFailed": "Couldn't refresh the tasks ({reason}). Showing the last list.",
+    "empty": {
+      "title": "No scheduled tasks yet",
+      "message": "Run commands on a schedule: save the world, announce a message or restart with a warning."
+    },
+    "trigger": {
+      "everyMinutes": "Every {n} min",
+      "everyHours": "Every {n} h",
+      "daily": "Daily at {time}"
+    },
+    "unit": {
+      "min": "{n} min",
+      "h": "{n} h",
+      "d": "{n} d"
+    },
+    "when": {
+      "in": "in {when}",
+      "ago": "{when} ago",
+      "soon": "in less than a minute",
+      "justNow": "just now",
+      "never": "Never"
+    },
+    "meta": {
+      "next": "Next run",
+      "last": "Last run",
+      "paused": "Paused"
+    },
+    "stepsOne": "1 step",
+    "steps": "{count} steps",
+    "enabled": "Enabled",
+    "toggleNamed": "Enable {name}",
+    "run": "Run now",
+    "runNamed": "Run {name} now",
+    "edit": "Edit",
+    "editNamed": "Edit {name}",
+    "deleteNamed": "Delete {name}",
+    "toast": {
+      "created": "Task \"{name}\" created.",
+      "saved": "Task \"{name}\" saved.",
+      "enabled": "Task \"{name}\" enabled.",
+      "disabled": "Task \"{name}\" disabled.",
+      "deleted": "Task \"{name}\" deleted.",
+      "started": "Task \"{name}\" started.",
+      "alreadyRunning": "Task \"{name}\" is already running.",
+      "gone": "That task no longer exists.",
+      "failed": "Couldn't complete that. Please try again."
+    },
+    "delete": {
+      "title": "Delete \"{name}\"?",
+      "message": "The task stops and is removed. This can't be undone.",
+      "confirm": "Delete task"
+    },
+    "editor": {
+      "addTitle": "New task",
+      "editTitle": "Edit task",
+      "templates": "Start from a template",
+      "templatesHint": "Fills in the name, schedule and steps. You can change everything.",
+      "name": "Name",
+      "namePlaceholder": "Save the world every 30 minutes",
+      "trigger": "Schedule",
+      "triggerInterval": "Every N minutes",
+      "triggerDaily": "Every day at a set time",
+      "interval": "Every (minutes)",
+      "intervalHint": "From 1 to 10080 minutes (7 days).",
+      "daily": "Time of day",
+      "dailyHint": "In the Linux server's time zone.",
+      "steps": "Steps",
+      "stepsHint": "They run in order. A wait pauses the task before the next step.",
+      "unattended": "Tasks run on their own, so commands marked as dangerous run without asking for confirmation.",
+      "stepNo": "Step {n}",
+      "command": "Command",
+      "commandNamed": "Command, step {n}",
+      "commandPlaceholder": "say Hello!",
+      "wait": "Wait",
+      "waitNamed": "Minutes to wait, step {n}",
+      "waitUnit": "minutes",
+      "dangerous": "Dangerous",
+      "dangerousTitle": "This command is on the dangerous list. It runs without confirmation.",
+      "moveUp": "Move step {n} up",
+      "moveDown": "Move step {n} down",
+      "remove": "Remove step {n}",
+      "addCommand": "Command",
+      "addWait": "Wait",
+      "save": "Save task",
+      "create": "Create task",
+      "saveFailed": "Couldn't save the task. Please try again."
+    },
+    "templates": {
+      "saveEvery30": {
+        "name": "Save the world every 30 minutes"
+      },
+      "autoMessage": {
+        "name": "Hourly announcement",
+        "say": "Welcome! Please be kind to other players."
+      },
+      "restartWarning": {
+        "name": "Daily restart with warnings",
+        "in10": "Server restart in 10 minutes",
+        "in5": "Server restart in 5 minutes",
+        "in1": "Server restart in 1 minute"
+      }
+    },
+    "errors": {
+      "invalid": "This value is not valid.",
+      "name": {
+        "required": "Give the task a name.",
+        "too_long": "The name can have up to 60 characters."
+      },
+      "intervalMinutes": "Enter a whole number of minutes from 1 to 10080.",
+      "dailyTime": "Enter a valid time of day (HH:MM).",
+      "steps": {
+        "required": "Add at least one step.",
+        "too_many": "A task can have up to 50 steps."
+      },
+      "step": {
+        "empty": "Type a command.",
+        "invalid_chars": "Commands can't contain line breaks.",
+        "too_long": "That command is too long for RCON (max. 1446 bytes).",
+        "minutes": "Enter a whole number of minutes from 1 to 1440."
+      }
+    }
   }
 }

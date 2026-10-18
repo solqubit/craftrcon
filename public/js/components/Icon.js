@@ -48,6 +48,8 @@ const PATHS = {
   enter: () => html`<path d="M20 4v7a4 4 0 0 1-4 4H4" /><path d="m9 10-5 5 5 5" />`,
   more: () => html`<circle cx="12" cy="5" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="12" cy="19" r="1" />`,
   arrowDown: () => html`<path d="M12 5v14" /><path d="m19 12-7 7-7-7" />`,
+  arrowUp: () => html`<path d="M12 19V5" /><path d="m5 12 7-7 7 7" />`,
+  play: () => html`<polygon points="6 3 20 12 6 21 6 3" />`,
 };
 
 export function Icon({ name, size = 18, class: className = '' }) {

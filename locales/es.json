@@ -690,5 +690,134 @@
       "title": "Anuncios",
       "text": "Envía un mensaje a todos los que están conectados, con colores y formatos."
     }
+  },
+  "tasks": {
+    "subtitle": "Comandos programados de {name}",
+    "add": "Nueva tarea",
+    "note": "Las tareas solo se ejecutan mientras el panel de CraftRCON está en marcha, y los horarios usan la zona horaria del servidor Linux donde corre.",
+    "loadFailed": {
+      "title": "No se pudieron cargar las tareas"
+    },
+    "refreshFailed": "No se pudieron actualizar las tareas ({reason}). Se muestra la última lista.",
+    "empty": {
+      "title": "Aún no hay tareas programadas",
+      "message": "Ejecuta comandos en horarios fijos: guardar el mundo, anunciar un mensaje o reiniciar con aviso."
+    },
+    "trigger": {
+      "everyMinutes": "Cada {n} min",
+      "everyHours": "Cada {n} h",
+      "daily": "Todos los días a las {time}"
+    },
+    "unit": {
+      "min": "{n} min",
+      "h": "{n} h",
+      "d": "{n} d"
+    },
+    "when": {
+      "in": "en {when}",
+      "ago": "hace {when}",
+      "soon": "en menos de un minuto",
+      "justNow": "justo ahora",
+      "never": "Nunca"
+    },
+    "meta": {
+      "next": "Próxima ejecución",
+      "last": "Última ejecución",
+      "paused": "En pausa"
+    },
+    "stepsOne": "1 paso",
+    "steps": "{count} pasos",
+    "enabled": "Activa",
+    "toggleNamed": "Activar {name}",
+    "run": "Ejecutar ahora",
+    "runNamed": "Ejecutar {name} ahora",
+    "edit": "Editar",
+    "editNamed": "Editar {name}",
+    "deleteNamed": "Eliminar {name}",
+    "toast": {
+      "created": "Tarea \"{name}\" creada.",
+      "saved": "Tarea \"{name}\" guardada.",
+      "enabled": "Tarea \"{name}\" activada.",
+      "disabled": "Tarea \"{name}\" desactivada.",
+      "deleted": "Tarea \"{name}\" eliminada.",
+      "started": "Tarea \"{name}\" iniciada.",
+      "alreadyRunning": "La tarea \"{name}\" ya se está ejecutando.",
+      "gone": "Esa tarea ya no existe.",
+      "failed": "No se pudo completar la acción. Inténtalo de nuevo."
+    },
+    "delete": {
+      "title": "¿Eliminar \"{name}\"?",
+      "message": "La tarea se detiene y se elimina. No se puede deshacer.",
+      "confirm": "Eliminar tarea"
+    },
+    "editor": {
+      "addTitle": "Nueva tarea",
+      "editTitle": "Editar tarea",
+      "templates": "Empezar desde una plantilla",
+      "templatesHint": "Completa el nombre, el horario y los pasos. Puedes cambiar todo.",
+      "name": "Nombre",
+      "namePlaceholder": "Guardar el mundo cada 30 minutos",
+      "trigger": "Horario",
+      "triggerInterval": "Cada N minutos",
+      "triggerDaily": "Todos los días a una hora fija",
+      "interval": "Cada (minutos)",
+      "intervalHint": "De 1 a 10080 minutos (7 días).",
+      "daily": "Hora del día",
+      "dailyHint": "En la zona horaria del servidor Linux.",
+      "steps": "Pasos",
+      "stepsHint": "Se ejecutan en orden. Una espera pausa la tarea antes del siguiente paso.",
+      "unattended": "Las tareas se ejecutan solas, así que los comandos marcados como peligrosos corren sin pedir confirmación.",
+      "stepNo": "Paso {n}",
+      "command": "Comando",
+      "commandNamed": "Comando, paso {n}",
+      "commandPlaceholder": "say ¡Hola!",
+      "wait": "Esperar",
+      "waitNamed": "Minutos de espera, paso {n}",
+      "waitUnit": "minutos",
+      "dangerous": "Peligroso",
+      "dangerousTitle": "Este comando está en la lista de peligrosos. Se ejecuta sin confirmación.",
+      "moveUp": "Subir el paso {n}",
+      "moveDown": "Bajar el paso {n}",
+      "remove": "Quitar el paso {n}",
+      "addCommand": "Comando",
+      "addWait": "Espera",
+      "save": "Guardar tarea",
+      "create": "Crear tarea",
+      "saveFailed": "No se pudo guardar la tarea. Inténtalo de nuevo."
+    },
+    "templates": {
+      "saveEvery30": {
+        "name": "Guardar el mundo cada 30 minutos"
+      },
+      "autoMessage": {
+        "name": "Anuncio cada hora",
+        "say": "¡Bienvenidos! Sean amables con los demás jugadores."
+      },
+      "restartWarning": {
+        "name": "Reinicio diario con avisos",
+        "in10": "Reinicio del servidor en 10 minutos",
+        "in5": "Reinicio del servidor en 5 minutos",
+        "in1": "Reinicio del servidor en 1 minuto"
+      }
+    },
+    "errors": {
+      "invalid": "Este valor no es válido.",
+      "name": {
+        "required": "Ponle un nombre a la tarea.",
+        "too_long": "El nombre puede tener hasta 60 caracteres."
+      },
+      "intervalMinutes": "Ingresa un número entero de minutos entre 1 y 10080.",
+      "dailyTime": "Ingresa una hora del día válida (HH:MM).",
+      "steps": {
+        "required": "Agrega al menos un paso.",
+        "too_many": "Una tarea puede tener hasta 50 pasos."
+      },
+      "step": {
+        "empty": "Escribe un comando.",
+        "invalid_chars": "Los comandos no pueden tener saltos de línea.",
+        "too_long": "Ese comando es demasiado largo para RCON (máx. 1446 bytes).",
+        "minutes": "Ingresa un número entero de minutos entre 1 y 1440."
+      }
+    }
   }
 }
