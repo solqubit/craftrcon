@@ -1,0 +1,249 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { makeApp, TEST_HOST, TEST_ORIGIN } from './helpers.js';
+import { createRateLimiter } from '../src/security/rateLimit.js';
+
+const SAME_ORIGIN = { host: TEST_HOST, origin: TEST_ORIGIN };
+const GOOD = { password: 'correct-horse-battery' };
+
+function post(app, url, payload, headers = SAME_ORIGIN) {
+  return app.inject({ method: 'POST', url, headers, payload });
+}
+
+test('correct login sets an HttpOnly SameSite=Strict cookie', async (t) => {
+  const { app } = await makeApp();
+  t.after(() => app.close());
+  const res = await post(app, '/api/login', GOOD);
+  assert.equal(res.statusCode, 204);
+  const raw = res.headers['set-cookie'];
+  assert.match(raw, /^craftrcon_sid=[\w-]{43};/);
+  assert.match(raw, /HttpOnly/);
+  assert.match(raw, /SameSite=Strict/);
+  assert.match(raw, /Path=\//);
+  assert.match(raw, /Max-Age=604800/);
+  assert.doesNotMatch(raw, /Secure/);
+});
+
+test('cookie is Secure when a domain is configured', async (t) => {
+  const { app } = await makeApp({ config: { domain: 'panel.test' } });
+  t.after(() => app.close());
+  const res = await post(app, '/api/login', GOOD);
+  assert.match(res.headers['set-cookie'], /Secure/);
+});
+
+test('/api/me needs a session', async (t) => {
+  const { app, login } = await makeApp();
+  t.after(() => app.close());
+  const headers = await login();
+  const ok = await app.inject({ method: 'GET', url: '/api/me', headers });
+  assert.equal(ok.statusCode, 200);
+  assert.deepEqual(ok.json(), { authenticated: true });
+  const anon = await app.inject({ method: 'GET', url: '/api/me' });
+  assert.equal(anon.statusCode, 401);
+  assert.deepEqual(anon.json(), { error: 'unauthorized' });
+  const forged = await app.inject({ method: 'GET', url: '/api/me', headers: { cookie: 'craftrcon_sid=nope' } });
+  assert.equal(forged.statusCode, 401);
+});
+
+test('/api/health stays public', async (t) => {
+  const { app } = await makeApp();
+  t.after(() => app.close());
+  const res = await app.inject({ method: 'GET', url: '/api/health' });
+  assert.equal(res.statusCode, 200);
+});
+
+test('wrong password gives 401 invalid_password', async (t) => {
+  const { app } = await makeApp();
+  t.after(() => app.close());
+  const res = await post(app, '/api/login', { password: 'nope' });
+  assert.equal(res.statusCode, 401);
+  assert.deepEqual(res.json(), { error: 'invalid_password' });
+  assert.equal(res.headers['set-cookie'], undefined);
+});
+
+test('login never authenticates when no admin password is set', async (t) => {
+  const { app } = await makeApp({ password: null });
+  t.after(() => app.close());
+  for (const payload of [{ password: '' }, { password: 'anything' }, {}]) {
+    const res = await post(app, '/api/login', payload);
+    assert.equal(res.statusCode, 401);
+    assert.deepEqual(res.json(), { error: 'invalid_password' });
+  }
+});
+
+test('5 wrong passwords lock the IP, even for the correct password', async (t) => {
+  const { app } = await makeApp();
+  t.after(() => app.close());
+  for (let i = 0; i < 5; i += 1) {
+    const res = await post(app, '/api/login', { password: 'wrong' });
+    assert.equal(res.statusCode, 401);
+  }
+  const locked = await post(app, '/api/login', GOOD);
+  assert.equal(locked.statusCode, 429);
+  const body = locked.json();
+  assert.equal(body.error, 'too_many_attempts');
+  assert.ok(body.retryAfterMs > 0 && body.retryAfterMs <= 60_000);
+});
+
+test('rate limiter doubles the lock each time up to the cap and resets on success', () => {
+  let t = 0;
+  const rl = createRateLimiter({ maxFails: 2, baseLockMs: 1000, maxLockMs: 3000, now: () => t });
+  const lockFor = () => {
+    rl.fail('a');
+    rl.fail('a');
+    return rl.check('a').retryAfterMs;
+  };
+  assert.equal(rl.check('a').allowed, true);
+  assert.equal(lockFor(), 1000);
+  t += 1000;
+  assert.equal(rl.check('a').allowed, true);
+  assert.equal(lockFor(), 2000);
+  t += 2000;
+  assert.equal(lockFor(), 3000);
+  t += 3000;
+  assert.equal(lockFor(), 3000);
+  assert.equal(rl.check('b').allowed, true, 'other IPs are unaffected');
+  t += 3000;
+  rl.fail('a');
+  rl.success('a');
+  rl.fail('a');
+  assert.equal(rl.check('a').allowed, true, 'success clears the failure streak');
+});
+
+test('POST with a foreign Origin is rejected', async (t) => {
+  const { app, login } = await makeApp();
+  t.after(() => app.close());
+  const evil = { host: 'panel.test', origin: 'http://evil.test' };
+  const res = await post(app, '/api/login', GOOD, evil);
+  assert.equal(res.statusCode, 403);
+  assert.deepEqual(res.json(), { error: 'bad_origin' });
+
+  const headers = await login();
+  const authed = await post(app, '/api/logout', undefined, { ...headers, ...evil });
+  assert.equal(authed.statusCode, 403);
+  const stillValid = await app.inject({ method: 'GET', url: '/api/me', headers });
+  assert.equal(stillValid.statusCode, 200, 'a rejected logout must not destroy the session');
+});
+
+test('POST without Origin or with an unparsable Origin is rejected', async (t) => {
+  const { app } = await makeApp();
+  t.after(() => app.close());
+  assert.equal((await post(app, '/api/login', GOOD, { host: TEST_HOST })).statusCode, 403);
+  assert.equal((await post(app, '/api/login', GOOD, { host: TEST_HOST, origin: 'null' })).statusCode, 403);
+});
+
+test('Origin compares host and port, case-insensitively', async (t) => {
+  const { app } = await makeApp();
+  t.after(() => app.close());
+  const ok = await post(app, '/api/login', GOOD, { host: 'Panel.Test:8080', origin: 'http://panel.test:8080' });
+  assert.equal(ok.statusCode, 204);
+  const port = await post(app, '/api/login', GOOD, { host: 'panel.test:8080', origin: 'http://panel.test:9090' });
+  assert.equal(port.statusCode, 403);
+});
+
+test('X-Forwarded-Host is used only when trustProxy is set', async (t) => {
+  const headers = { host: '127.0.0.1:8080', 'x-forwarded-host': 'panel.test', origin: TEST_ORIGIN };
+
+  const proxied = await makeApp({ config: { trustProxy: true } });
+  t.after(() => proxied.app.close());
+  assert.equal((await post(proxied.app, '/api/login', GOOD, headers)).statusCode, 204);
+
+  const direct = await makeApp();
+  t.after(() => direct.app.close());
+  assert.equal((await post(direct.app, '/api/login', GOOD, headers)).statusCode, 403);
+});
+
+test('GET requests do not need an Origin', async (t) => {
+  const { app, login } = await makeApp();
+  t.after(() => app.close());
+  const { cookie } = await login();
+  const res = await app.inject({ method: 'GET', url: '/api/me', headers: { cookie } });
+  assert.equal(res.statusCode, 200);
+});
+
+test('a session idle for 8 days is rejected and removed', async (t) => {
+  const { app, db, login } = await makeApp();
+  t.after(() => app.close());
+  const headers = await login();
+  db.prepare('UPDATE sessions SET last_seen = ?').run(Date.now() - 8 * 24 * 3600e3);
+  const res = await app.inject({ method: 'GET', url: '/api/me', headers });
+  assert.equal(res.statusCode, 401);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM sessions').get().n, 0);
+});
+
+test('using a session refreshes last_seen', async (t) => {
+  const { app, db, login } = await makeApp();
+  t.after(() => app.close());
+  const headers = await login();
+  const old = Date.now() - 6 * 24 * 3600e3;
+  db.prepare('UPDATE sessions SET last_seen = ?').run(old);
+  assert.equal((await app.inject({ method: 'GET', url: '/api/me', headers })).statusCode, 200);
+  assert.ok(db.prepare('SELECT last_seen FROM sessions').get().last_seen > old);
+});
+
+test('only the token hash is stored', async (t) => {
+  const { app, db, login } = await makeApp();
+  t.after(() => app.close());
+  const { cookie } = await login();
+  const token = cookie.split('=')[1];
+  const { id_hash: stored } = db.prepare('SELECT id_hash FROM sessions').get();
+  assert.notEqual(stored, token);
+  assert.match(stored, /^[0-9a-f]{64}$/);
+});
+
+test('logout destroys the session and clears the cookie', async (t) => {
+  const { app, login } = await makeApp();
+  t.after(() => app.close());
+  const headers = await login();
+  const res = await post(app, '/api/logout', undefined, headers);
+  assert.equal(res.statusCode, 204);
+  assert.match(res.headers['set-cookie'], /craftrcon_sid=;/);
+  const after = await app.inject({ method: 'GET', url: '/api/me', headers });
+  assert.equal(after.statusCode, 401);
+});
+
+test('login success and failure are audited with the client IP', async (t) => {
+  const { app, services } = await makeApp();
+  t.after(() => app.close());
+  await post(app, '/api/login', { password: 'wrong' });
+  await post(app, '/api/login', GOOD);
+  const rows = services.audit.list({});
+  assert.deepEqual(
+    rows.map((r) => [r.action, r.origin, r.ok, r.detail]),
+    [
+      ['login_ok', 'auth', true, '127.0.0.1'],
+      ['login_fail', 'auth', false, '127.0.0.1'],
+    ],
+  );
+});
+
+test('audit list filters, paginates and purges', async (t) => {
+  const { db, services } = await makeApp();
+  t.after(() => db.close());
+  db.exec("INSERT INTO servers (name, host, rcon_password_enc) VALUES ('s', 'h', 'x')");
+  const { audit } = services;
+  audit.log({ origin: 'system', action: 'a' });
+  audit.log({ serverId: 1, origin: 'ui', action: 'b', detail: 'd', result: 'r' });
+  audit.log({ serverId: 1, origin: 'console', action: 'c', ok: false });
+  assert.deepEqual(audit.list({ serverId: 1 }).map((r) => r.action), ['c', 'b']);
+  const page = audit.list({ limit: 2 });
+  assert.deepEqual(page.map((r) => r.action), ['c', 'b']);
+  assert.deepEqual(audit.list({ before: page[1].id }).map((r) => r.action), ['a']);
+  assert.equal(audit.purge(60_000), 0);
+  assert.equal(audit.purge(-1), 3);
+  assert.deepEqual(audit.list({}), []);
+});
+
+test('the global hook also protects routes registered in plugin scopes', async (t) => {
+  const { app, login } = await makeApp();
+  t.after(() => app.close());
+  app.register(async (child) => {
+    child.get('/api/secret', async () => ({ secret: true }));
+    child.post('/api/secret', async () => ({ done: true }));
+  });
+  assert.equal((await app.inject({ method: 'GET', url: '/api/secret' })).statusCode, 401);
+  assert.equal((await post(app, '/api/secret', {}, { host: TEST_HOST })).statusCode, 403);
+  const headers = await login();
+  assert.equal((await app.inject({ method: 'GET', url: '/api/secret', headers })).statusCode, 200);
+  assert.equal((await post(app, '/api/secret', {}, headers)).statusCode, 200);
+});

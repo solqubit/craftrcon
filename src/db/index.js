@@ -18,6 +18,7 @@ export function openDb(file) {
   const db = new DatabaseSync(file);
   db.exec('PRAGMA foreign_keys = ON');
   db.exec('PRAGMA journal_mode = WAL');
+  db.exec('PRAGMA busy_timeout = 5000');
 
   const current = db.prepare('PRAGMA user_version').get().user_version;
   for (const { version, file: name } of loadMigrations()) {
