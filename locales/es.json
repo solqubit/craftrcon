@@ -6,7 +6,8 @@
     "delete": "Eliminar",
     "close": "Cerrar",
     "dismiss": "Descartar",
-    "loading": "Cargando…"
+    "loading": "Cargando…",
+    "retry": "Reintentar"
   },
   "nav": {
     "label": "Secciones",
@@ -57,5 +58,97 @@
     "sessionEnded": "Tu sesión terminó. Vuelve a iniciar sesión.",
     "logoutFailed": "No se pudo cerrar la sesión. Inténtalo de nuevo.",
     "serversLoad": "No se pudieron cargar tus servidores."
+  },
+  "servers": {
+    "add": "Agregar servidor",
+    "addTitle": "Agregar servidor",
+    "editTitle": "Editar servidor",
+    "open": "Abrir",
+    "edit": "Editar",
+    "editNamed": "Editar {name}",
+    "deleteNamed": "Eliminar {name}",
+    "count": "{count} servidores",
+    "countOne": "1 servidor",
+    "onlineCount": "{online} en línea",
+    "players": "{online}/{max} jugadores",
+    "unreachable": "No se puede alcanzar el servidor",
+    "passwordUnchanged": "Déjala vacía para conservar la actual",
+    "passwordHint": "Se guarda solo en el servidor del panel. Nunca se envía al navegador.",
+    "passwordHintEdit": "Solo hace falta para cambiarla, o si cambias el host o el puerto RCON.",
+    "gamePortHint": "Se usa para comprobar si el servidor está en línea.",
+    "fields": {
+      "name": "Nombre",
+      "host": "Host / IP",
+      "rconPort": "Puerto RCON",
+      "password": "Contraseña RCON",
+      "gamePort": "Puerto del juego",
+      "icon": "Icono",
+      "color": "Color"
+    },
+    "placeholders": {
+      "name": "Survival",
+      "host": "play.ejemplo.net"
+    },
+    "icons": {
+      "mountain": "Montaña",
+      "sparkle": "Destello",
+      "sword": "Espada",
+      "castle": "Castillo",
+      "tree": "Árbol",
+      "fire": "Fuego",
+      "diamond": "Diamante",
+      "skull": "Calavera"
+    },
+    "colors": {
+      "emerald": "Esmeralda",
+      "violet": "Violeta",
+      "amber": "Ámbar",
+      "sky": "Celeste",
+      "rose": "Rosa",
+      "slate": "Pizarra"
+    },
+    "errors": {
+      "required": "Este campo es obligatorio.",
+      "too_long": "Es demasiado largo.",
+      "invalid": "Este valor no es válido.",
+      "nameTaken": "Ya hay otro servidor con este nombre.",
+      "passwordRetype": "Vuelve a escribir la contraseña RCON para cambiar el host o el puerto RCON.",
+      "saveFailed": "No se pudo guardar el servidor. Inténtalo de nuevo."
+    },
+    "test": {
+      "button": "Probar conexión",
+      "running": "Probando…",
+      "ok": "Conexión correcta: RCON respondió en {ms} ms.",
+      "failed": "No se pudo ejecutar la prueba. Inténtalo de nuevo.",
+      "error": {
+        "ECONNREFUSED": "Conexión rechazada. Revisa el puerto RCON y que RCON esté activado (enable-rcon=true) en server.properties.",
+        "ETIMEDOUT": "La conexión agotó el tiempo de espera. Revisa el host, el puerto y los firewalls intermedios.",
+        "EHOSTUNREACH": "No se puede llegar al host. Revisa la dirección y tu red.",
+        "ENOTFOUND": "Ese nombre de host no existe. Revisa que esté bien escrito.",
+        "AUTH_FAILED": "Contraseña RCON incorrecta. Debe coincidir con rcon.password en server.properties.",
+        "CLOSED": "El servidor cerró la conexión. Revisa que RCON esté activado e inténtalo de nuevo.",
+        "TIMEOUT": "El servidor no respondió a tiempo. Inténtalo de nuevo en un momento."
+      }
+    },
+    "delete": {
+      "title": "¿Eliminar {name}?",
+      "message": "Esto quita el servidor de CraftRCON, junto con su historial guardado y sus tareas programadas. Tu servidor de Minecraft no se toca.",
+      "prompt": "Escribe {name} para confirmar",
+      "confirm": "Eliminar servidor",
+      "failed": "No se pudo eliminar el servidor. Inténtalo de nuevo."
+    },
+    "toast": {
+      "created": "Se agregó {name}.",
+      "updated": "Se actualizó {name}.",
+      "deleted": "Se eliminó {name}."
+    },
+    "empty": {
+      "title": "Te damos la bienvenida a CraftRCON",
+      "message": "Agrega tu primer servidor de Minecraft para administrarlo desde aquí. Necesitarás su host, puerto RCON y contraseña RCON."
+    },
+    "loadFailed": {
+      "title": "No se pudieron cargar tus servidores",
+      "message": "Revisa tu conexión e inténtalo de nuevo."
+    }
   }
 }

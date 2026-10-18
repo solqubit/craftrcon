@@ -8,10 +8,11 @@ import { Empty } from './components/Empty.js';
 import { Layout } from './components/Layout.js';
 import { Toasts, toast } from './components/Toast.js';
 import { Login } from './pages/Login.js';
+import { Servers } from './pages/Servers.js';
 
 // Section pages by route name. Later tasks register theirs here; until then a
 // section shows a placeholder.
-const PAGES = {};
+const PAGES = { servers: Servers };
 
 function Placeholder({ route }) {
   return html`<div class="page">

@@ -6,7 +6,8 @@
     "delete": "Delete",
     "close": "Close",
     "dismiss": "Dismiss",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "retry": "Try again"
   },
   "nav": {
     "label": "Sections",
@@ -57,5 +58,97 @@
     "sessionEnded": "Your session has ended. Please sign in again.",
     "logoutFailed": "Couldn't log out. Please try again.",
     "serversLoad": "Couldn't load your servers."
+  },
+  "servers": {
+    "add": "Add server",
+    "addTitle": "Add server",
+    "editTitle": "Edit server",
+    "open": "Open",
+    "edit": "Edit",
+    "editNamed": "Edit {name}",
+    "deleteNamed": "Delete {name}",
+    "count": "{count} servers",
+    "countOne": "1 server",
+    "onlineCount": "{online} online",
+    "players": "{online}/{max} players",
+    "unreachable": "Can't reach the server",
+    "passwordUnchanged": "Leave empty to keep the current password",
+    "passwordHint": "Stored on the panel's server only. Never sent to the browser.",
+    "passwordHintEdit": "Only needed to change it, or if you change the host or RCON port.",
+    "gamePortHint": "Used to check whether the server is online.",
+    "fields": {
+      "name": "Name",
+      "host": "Host / IP",
+      "rconPort": "RCON port",
+      "password": "RCON password",
+      "gamePort": "Game port",
+      "icon": "Icon",
+      "color": "Color"
+    },
+    "placeholders": {
+      "name": "Survival",
+      "host": "play.example.net"
+    },
+    "icons": {
+      "mountain": "Mountain",
+      "sparkle": "Sparkle",
+      "sword": "Sword",
+      "castle": "Castle",
+      "tree": "Tree",
+      "fire": "Fire",
+      "diamond": "Diamond",
+      "skull": "Skull"
+    },
+    "colors": {
+      "emerald": "Emerald",
+      "violet": "Violet",
+      "amber": "Amber",
+      "sky": "Sky",
+      "rose": "Rose",
+      "slate": "Slate"
+    },
+    "errors": {
+      "required": "This field is required.",
+      "too_long": "This is too long.",
+      "invalid": "This value is not valid.",
+      "nameTaken": "Another server already has this name.",
+      "passwordRetype": "Enter the RCON password again to change the host or RCON port.",
+      "saveFailed": "Couldn't save the server. Please try again."
+    },
+    "test": {
+      "button": "Test connection",
+      "running": "Testing…",
+      "ok": "Connection OK: RCON answered in {ms} ms.",
+      "failed": "Couldn't run the test. Please try again.",
+      "error": {
+        "ECONNREFUSED": "Connection refused. Check the RCON port and that RCON is enabled (enable-rcon=true) in server.properties.",
+        "ETIMEDOUT": "The connection timed out. Check the host, the port and any firewall in between.",
+        "EHOSTUNREACH": "The host can't be reached. Check the address and your network.",
+        "ENOTFOUND": "That host name doesn't exist. Check the spelling.",
+        "AUTH_FAILED": "Wrong RCON password. It must match rcon.password in server.properties.",
+        "CLOSED": "The server closed the connection. Check that RCON is enabled and try again.",
+        "TIMEOUT": "The server didn't answer in time. Try again in a moment."
+      }
+    },
+    "delete": {
+      "title": "Delete {name}?",
+      "message": "This removes the server from CraftRCON, along with its saved history and scheduled tasks. Your Minecraft server isn't touched.",
+      "prompt": "Type {name} to confirm",
+      "confirm": "Delete server",
+      "failed": "Couldn't delete the server. Please try again."
+    },
+    "toast": {
+      "created": "{name} was added.",
+      "updated": "{name} was updated.",
+      "deleted": "{name} was deleted."
+    },
+    "empty": {
+      "title": "Welcome to CraftRCON",
+      "message": "Add your first Minecraft server to manage it from here. You will need its host, RCON port and RCON password."
+    },
+    "loadFailed": {
+      "title": "Couldn't load your servers",
+      "message": "Check your connection and try again."
+    }
   }
 }
