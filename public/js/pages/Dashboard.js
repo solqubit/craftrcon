@@ -11,9 +11,9 @@ import { api, openLive } from '../api.js';
 import { t } from '../i18n.js';
 import { href } from '../router.js';
 import { useStore } from '../store.js';
-import { DEFAULT_DANGEROUS_COMMANDS } from '../data/dangerous.js';
 import { addLive, addPending, commandProblem, errorKey, failSent, normalizeCommand, resolveSent } from '../lib/console.js';
 import { isDangerous } from '../lib/dangerous.js';
+import { useDangerousCommands } from '../lib/dangerousCommands.js';
 import { MINI_CONSOLE_LINES, offlineErrorKey, playersView, tail, tpsLevel, tpsText, versionLabel } from '../lib/dashboard.js';
 import { usePolling } from '../lib/polling.js';
 import { getScreen, nextSendId, updateScreen } from '../lib/screens.js';
@@ -249,7 +249,7 @@ function DashboardView({ server }) {
   const [samples, setSamples] = useState(null); // null | 'error' | { range, from, to, points }
   const [range, setRange] = useState('24h');
   const [entries, setEntries] = useState(() => getScreen(id));
-  const [dangerous, setDangerous] = useState(DEFAULT_DANGEROUS_COMMANDS);
+  const { commands: dangerous } = useDangerousCommands();
   const [broadcasting, setBroadcasting] = useState(false);
 
   const update = (change) => {
@@ -259,9 +259,6 @@ function DashboardView({ server }) {
   };
 
   useEffect(() => {
-    api('/api/settings/dangerous-commands')
-      .then((list) => Array.isArray(list) && setDangerous(list))
-      .catch(() => {}); // keep the defaults: better one confirmation too many
     return openLive(id, (message) => {
       if (message?.type === 'status' && message.status) setStatus(message.status);
       else if (message?.type === 'console' && message.entry) update((log) => addLive(log, message.entry));

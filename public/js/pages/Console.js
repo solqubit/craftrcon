@@ -11,9 +11,9 @@ import { Component, html, useEffect, useLayoutEffect, useMemo, useRef, useState 
 import { api, openLive } from '../api.js';
 import { t } from '../i18n.js';
 import { useStore } from '../store.js';
-import { DEFAULT_DANGEROUS_COMMANDS } from '../data/dangerous.js';
 import { applySuggestion, lastToken, signature, suggest } from '../lib/autocomplete.js';
 import { isDangerous } from '../lib/dangerous.js';
+import { useDangerousCommands } from '../lib/dangerousCommands.js';
 import {
   addLive,
   addPending,
@@ -107,7 +107,7 @@ function ConsoleView({ server }) {
   const [history, setHistory, loadHistory] = useList(`/api/servers/${id}/history`, uniqueHistory);
   const [favorites, , loadFavorites] = useList(`/api/servers/${id}/favorites`);
   const [players, setPlayers] = useState([]);
-  const [dangerous, setDangerous] = useState(DEFAULT_DANGEROUS_COMMANDS);
+  const { commands: dangerous } = useDangerousCommands();
 
   const [input, setInput] = useState('');
   const [open, setOpen] = useState(false); // suggestions wanted: the user is typing
@@ -129,9 +129,6 @@ function ConsoleView({ server }) {
   useEffect(() => {
     loadHistory();
     loadFavorites();
-    api('/api/settings/dangerous-commands')
-      .then((list) => Array.isArray(list) && setDangerous(list))
-      .catch(() => {}); // keep the defaults: better one confirmation too many
 
     // Online players for autocompletion: now and every 30 s, paused while the
     // tab is hidden (and refreshed as soon as it is shown again).

@@ -13,12 +13,13 @@ import { Login } from './pages/Login.js';
 import { Moderation } from './pages/Moderation.js';
 import { Players } from './pages/Players.js';
 import { Servers } from './pages/Servers.js';
+import { Settings } from './pages/Settings.js';
 import { Tasks } from './pages/Tasks.js';
 import { World } from './pages/World.js';
 
 // Section pages by route name. Later tasks register theirs here; until then a
 // section shows a placeholder.
-const PAGES = { dashboard: Dashboard, console: Console, moderation: Moderation, players: Players, servers: Servers, tasks: Tasks, world: World };
+const PAGES = { dashboard: Dashboard, console: Console, moderation: Moderation, players: Players, servers: Servers, settings: Settings, tasks: Tasks, world: World };
 
 function Placeholder({ route }) {
   return html`<div class="page">

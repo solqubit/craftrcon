@@ -21,17 +21,24 @@ export function Brand() {
   </span>`;
 }
 
+// Switches the UI language (remembered by setLang). Returns false, after a
+// toast, when its translations could not be loaded.
+export async function switchLanguage(code) {
+  try {
+    await setLang(code);
+    store.set({ lang: getLang() });
+    return true;
+  } catch {
+    toast(t('errors.network'), { type: 'error' });
+    return false;
+  }
+}
+
 export function LangSelect() {
   const lang = useStore().lang;
   const onChange = async (event) => {
     const select = event.currentTarget; // currentTarget is gone after the await
-    try {
-      await setLang(select.value);
-      store.set({ lang: getLang() });
-    } catch {
-      select.value = lang;
-      toast(t('errors.network'), { type: 'error' });
-    }
+    if (!(await switchLanguage(select.value))) select.value = lang;
   };
   return html`<label class="lang-select" title=${t('layout.language')}>
     <span class="sr-only">${t('layout.language')}</span>

@@ -3403,6 +3403,366 @@ time.tk-time {
   }
 }
 
+/* ---------- Settings page ---------- */
+.st {
+  max-width: 1040px;
+}
+
+.st-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+}
+
+.st-section-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.st-section-desc {
+  margin-top: 3px;
+  color: var(--subtle);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.st-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 420px;
+}
+
+.st-narrow {
+  max-width: 240px;
+}
+
+.st-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.st-actions-center {
+  justify-content: center;
+}
+
+/* Dangerous commands: removable chips */
+.st-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.st-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  height: 30px;
+  padding: 0 4px 0 11px;
+  border: 1px solid var(--warn-line);
+  border-radius: 999px;
+  background: var(--warn-soft);
+  color: var(--warn-text);
+  font-size: 12.5px;
+}
+
+.st-chip .mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.st-chip-remove {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.st-chip-remove:hover:not(:disabled) {
+  background: var(--warn-line);
+}
+
+.st-chip-remove:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.st-chip-remove:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.st-chips-empty {
+  color: var(--subtle);
+  font-size: 13px;
+}
+
+.st-add {
+  max-width: 460px;
+}
+
+.st-add-row {
+  display: flex;
+  gap: 8px;
+}
+
+.st-problems {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Activity */
+.st-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.st-filter {
+  min-width: 200px;
+}
+
+.st-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.st-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.st-table th {
+  padding: 9px 12px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.st-table td {
+  padding: 9px 12px;
+  border-top: 1px solid var(--border);
+  vertical-align: top;
+  overflow-wrap: break-word;
+}
+
+.st-when {
+  white-space: nowrap;
+  color: var(--text-2);
+}
+
+.st-detail,
+.st-result {
+  min-width: 150px;
+  max-width: 320px;
+}
+
+.st-origin {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11.5px;
+}
+
+.st-origin-auth {
+  color: var(--info);
+}
+
+.st-origin-task {
+  color: var(--warn);
+}
+
+.st-ok-yes,
+.st-ok-no {
+  display: inline-flex;
+  align-items: center;
+}
+
+.st-ok-yes {
+  color: var(--accent);
+}
+
+.st-ok-no {
+  color: var(--danger);
+}
+
+.st-row-failed .st-detail,
+.st-row-failed .st-result {
+  color: var(--danger-text);
+}
+
+.st-result summary {
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.st-result-full {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  max-height: 240px;
+  overflow: auto;
+  border-radius: var(--radius-sm);
+  background: var(--sunken);
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* About */
+.st-about {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+}
+
+.st-about dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.st-about dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.st-uptodate {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent);
+  font-size: 13px;
+}
+
+.st-update-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.st-command {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 12px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm);
+  background: var(--sunken);
+  color: var(--text);
+}
+
+.st-command code {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 767.98px) {
+  .st-section {
+    padding: 16px;
+  }
+
+  .st-narrow,
+  .st-filter {
+    max-width: none;
+    flex: 1 1 100%;
+  }
+
+  .st-add-row {
+    flex-direction: column;
+  }
+
+  .st-command {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* Under 1024 px the activity table becomes a stack of cards: one labelled line per cell. */
+@media (max-width: 1023.98px) {
+  .st-table-wrap {
+    overflow: visible;
+    border: 0;
+  }
+
+  .st-table,
+  .st-table tbody,
+  .st-table tr,
+  .st-table td {
+    display: block;
+  }
+
+  .st-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .st-table tr {
+    margin-bottom: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--panel-2);
+  }
+
+  .st-table td {
+    display: flex;
+    gap: 12px;
+    padding: 7px 12px;
+    border-top: 0;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .st-table td::before {
+    content: attr(data-label);
+    flex: 0 0 76px;
+    color: var(--subtle);
+    font-size: 12px;
+  }
+
+  .st-table td > * {
+    min-width: 0;
+  }
+
+  .st-when {
+    white-space: normal;
+  }
+
+  /* A cell with nothing to say takes no line. */
+  .st-table td.st-none {
+    display: none;
+  }
+}
+
 /* ---------- Minecraft bits ---------- */
 .head {
   flex-shrink: 0;

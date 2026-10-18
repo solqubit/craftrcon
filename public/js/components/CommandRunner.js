@@ -5,32 +5,26 @@
 //   lastReply.current: the text the server answered to the last command that went through
 //   ... render ${confirmDialog} somewhere in the page ...
 //
-// It owns the dangerous-commands list (fetched once, defaults on failure), the
+// It reads the dangerous-commands list (useDangerousCommands), owns the
 // confirmation of a command on that list, the POST to /command with origin
 // 'ui' (audit log, not console history) and the toast: the server's reply, or
 // the translated error. `ask` ({ title, message, label, danger }) makes a
 // command that isn't on the list ask for confirmation too.
-import { html, useEffect, useRef, useState } from '../../vendor/htm-preact.js';
+import { html, useRef, useState } from '../../vendor/htm-preact.js';
 import { api } from '../api.js';
 import { t } from '../i18n.js';
-import { DEFAULT_DANGEROUS_COMMANDS } from '../data/dangerous.js';
 import { commandReply, confirmationFor, failureCode } from '../lib/commands.js';
 import { errorKey } from '../lib/console.js';
+import { useDangerousCommands } from '../lib/dangerousCommands.js';
 import { Confirm } from './Confirm.js';
 import { McText } from './McText.js';
 import { toast } from './Toast.js';
 
 export function useCommandRunner(serverId) {
-  const [dangerous, setDangerous] = useState(DEFAULT_DANGEROUS_COMMANDS);
+  const { commands: dangerous } = useDangerousCommands();
   const [pending, setPending] = useState(null); // { command, ask, resolve }: awaiting a yes
   const [busy, setBusy] = useState(false);
   const lastReply = useRef('');
-
-  useEffect(() => {
-    api('/api/settings/dangerous-commands')
-      .then((list) => Array.isArray(list) && setDangerous(list))
-      .catch(() => {}); // keep the defaults: better one confirmation too many
-  }, []);
 
   async function execute(command) {
     setBusy(true);

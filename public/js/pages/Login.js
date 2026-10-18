@@ -5,6 +5,7 @@ import { html, useEffect, useRef, useState } from '../../vendor/htm-preact.js';
 import { api } from '../api.js';
 import { t } from '../i18n.js';
 import { store } from '../store.js';
+import { useCountdown } from '../lib/countdown.js';
 import { Brand, LangSelect } from '../components/Layout.js';
 import { Icon } from '../components/Icon.js';
 
@@ -22,21 +23,6 @@ const errorText = (code) =>
     empty: t('login.empty'),
     network_error: t('errors.network'),
   })[code] ?? t('login.failed');
-
-// Seconds left until `until` (ms timestamp), re-rendering every 250 ms while > 0.
-function useCountdown(until) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    if (!until) return;
-    setNow(Date.now());
-    const timer = setInterval(() => {
-      setNow(Date.now());
-      if (Date.now() >= until) clearInterval(timer);
-    }, 250);
-    return () => clearInterval(timer);
-  }, [until]);
-  return until ? Math.max(0, Math.ceil((until - now) / 1000)) : 0;
-}
 
 export function Login() {
   const [password, setPassword] = useState('');

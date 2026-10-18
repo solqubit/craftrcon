@@ -13,8 +13,8 @@ import { html, useEffect, useRef, useState } from '../../vendor/htm-preact.js';
 import { api } from '../api.js';
 import { t } from '../i18n.js';
 import { TASK_TEMPLATES } from '../data/taskTemplates.js';
-import { DEFAULT_DANGEROUS_COMMANDS } from '../data/dangerous.js';
 import { isDangerous } from '../lib/dangerous.js';
+import { useDangerousCommands } from '../lib/dangerousCommands.js';
 import { usePolling } from '../lib/polling.js';
 import {
   MAX_STEPS, MAX_NAME,
@@ -399,7 +399,7 @@ function TaskItem({ task, now, busy, onToggle, onRun, onEdit, onDelete }) {
 function TasksView({ server }) {
   const [tasks, setTasks] = useState(null); // null until loaded
   const [error, setError] = useState(null); // code of the last failed load
-  const [dangerous, setDangerous] = useState(DEFAULT_DANGEROUS_COMMANDS);
+  const { commands: dangerous } = useDangerousCommands();
   const [editing, setEditing] = useState(undefined); // undefined: closed, null: new, task: edit
   const [deleting, setDeleting] = useState(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -417,12 +417,6 @@ function TasksView({ server }) {
     }
   }
   usePolling(load, POLL_MS, [server.id]);
-
-  useEffect(() => {
-    api('/api/settings/dangerous-commands')
-      .then((list) => Array.isArray(list) && setDangerous(list))
-      .catch(() => {}); // keep the defaults: better one warning too many
-  }, []);
 
   const markBusy = (id, on) =>
     setBusy((set) => {

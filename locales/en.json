@@ -819,5 +819,110 @@
         "minutes": "Enter a whole number of minutes from 1 to 1440."
       }
     }
+  },
+  "settings": {
+    "subtitle": "Password, language, safety list, activity and version.",
+    "password": {
+      "title": "Password",
+      "description": "Change the password you use to sign in to this panel.",
+      "current": "Current password",
+      "next": "New password",
+      "repeat": "Repeat the new password",
+      "hint": "At least 8 characters. Every other device signed in will be logged out.",
+      "submit": "Change password",
+      "submitting": "Changing…",
+      "changed": "Password changed. Other sessions were logged out.",
+      "errors": {
+        "required": "This field is required.",
+        "too_short": "Use at least 8 characters.",
+        "mismatch": "The passwords don't match.",
+        "invalid": "That is not your current password.",
+        "failed": "Couldn't change the password. Please try again.",
+        "tooMany": "Too many attempts. Try again in {seconds} s."
+      }
+    },
+    "language": {
+      "title": "Language",
+      "description": "The language of this panel. It is remembered in this browser.",
+      "label": "Panel language"
+    },
+    "dangerous": {
+      "title": "Dangerous commands",
+      "description": "Commands that ask for confirmation before they run. A command is on the list when it equals an entry or starts with it followed by a space: \"op\" covers \"op Steve\" but not \"opx\".",
+      "empty": "The list is empty: no command will ask for confirmation.",
+      "add": "Add a command",
+      "placeholder": "e.g. kill @e",
+      "addButton": "Add",
+      "remove": "Remove {command}",
+      "unsaved": "Unsaved changes",
+      "saved": "Dangerous commands saved.",
+      "restore": "Restore defaults",
+      "restoreTitle": "Restore the default list?",
+      "restoreMessage": "Your list will be replaced by the default one and saved right away.",
+      "restored": "Default list restored.",
+      "loadFailed": "Couldn't load the list of dangerous commands.",
+      "errors": {
+        "empty": "Type a command.",
+        "duplicate": "That command is already on the list.",
+        "too_long": "Commands can have up to 64 characters.",
+        "invalid": "Commands can't be empty or contain line breaks.",
+        "too_many": "The list can have up to 50 commands.",
+        "item": "\"{command}\": {reason}",
+        "failed": "Couldn't save the list. Please try again."
+      }
+    },
+    "activity": {
+      "title": "Activity",
+      "description": "What was done in this panel: commands, sign-ins, changes to servers and scheduled tasks. Kept for 90 days.",
+      "filter": "Server",
+      "allServers": "All servers",
+      "refresh": "Refresh",
+      "loadMore": "Load more",
+      "loadFailed": "Couldn't load the activity.",
+      "loadMoreFailed": "Couldn't load more entries. Please try again.",
+      "empty": {
+        "title": "No activity yet",
+        "message": "Commands, sign-ins and changes will show up here."
+      },
+      "ok": "Succeeded",
+      "failed": "Failed",
+      "columns": {
+        "when": "Date",
+        "server": "Server",
+        "origin": "Origin",
+        "action": "Action",
+        "detail": "Detail",
+        "ok": "OK",
+        "result": "Result"
+      },
+      "origins": {
+        "console": "Console",
+        "ui": "Panel",
+        "task": "Task",
+        "auth": "Sign-in",
+        "system": "System"
+      },
+      "actions": {
+        "command": "Command",
+        "login_ok": "Signed in",
+        "login_fail": "Failed sign-in",
+        "password_change": "Password change",
+        "server_create": "Server added",
+        "server_update": "Server edited",
+        "server_delete": "Server deleted",
+        "task_run": "Task run"
+      }
+    },
+    "about": {
+      "title": "About",
+      "installed": "Installed version",
+      "upToDate": "You're on the latest version.",
+      "updateAvailable": "Version {latest} is available.",
+      "updateHint": "To update, run this on the machine where CraftRCON is installed:",
+      "copy": "Copy",
+      "copied": "Command copied.",
+      "copyFailed": "Couldn't copy. Select the command and copy it by hand.",
+      "checkFailed": "Couldn't check for updates."
+    }
   }
 }
