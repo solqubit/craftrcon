@@ -26,6 +26,15 @@ import { toast } from '../components/Toast.js';
 
 const POLL_MS = 5000;
 
+// The everyday actions, shown as icon buttons on each player card. The rest
+// (op, whitelist, kick, ban) live in the card's "more" menu.
+const QUICK_ACTIONS = [
+  { action: 'tell', icon: 'message' },
+  { action: 'teleport', icon: 'teleport' },
+  { action: 'gamemode', icon: 'gamepad' },
+  { action: 'give', icon: 'gift' },
+];
+
 function Loading() {
   return html`<div class="page-loading" role="status">
     <span class="spinner spinner-lg" aria-hidden="true"></span>
@@ -95,17 +104,36 @@ function PlayersView({ server }) {
   } else if (names.length === 0) {
     body = html`<${Empty} icon="players" title=${t('players.empty.title')} message=${t('players.empty.message', { name: server.name })} />`;
   } else {
-    body = html`<section class="card pl-card" aria-label=${t('players.listLabel')}>
-      <ul class="pl-list">
-        ${names.map(
-          (name) => html`<li key=${name} class="pl-row">
-            <${Head} name=${name} size=${28} />
-            <span class="pl-name">${name}</span>
-            <${PlayerMenu} name=${name} disabled=${!isValidPlayerName(name)} onSelect=${(action) => choose(action, name)} />
-          </li>`,
-        )}
-      </ul>
-    </section>`;
+    body = html`<ul class="pl-grid" aria-label=${t('players.listLabel')}>
+      ${names.map((name) => {
+        const usable = isValidPlayerName(name);
+        return html`<li key=${name} class="pl-player">
+          <div class="pl-player-top">
+            <span class="pl-avatar"><${Head} name=${name} size=${44} /></span>
+            <div class="pl-player-info">
+              <span class="pl-name" title=${name}>${name}</span>
+              <span class="pl-online"><span class="pl-online-dot" aria-hidden="true"></span>${t('players.online')}</span>
+            </div>
+            <${PlayerMenu} name=${name} disabled=${!usable} onSelect=${(action) => choose(action, name)} />
+          </div>
+          <div class="pl-quick" role="group" aria-label=${t('players.quickLabel', { name })}>
+            ${QUICK_ACTIONS.map(
+              ({ action, icon }) => html`<button
+                key=${action}
+                type="button"
+                class="pl-quick-btn"
+                title=${t(`players.quick.${action}`)}
+                aria-label=${`${t(`players.quick.${action}`)}: ${name}`}
+                disabled=${!usable}
+                onClick=${() => choose(action, name)}
+              >
+                <${Icon} name=${icon} size=${16} />
+              </button>`,
+            )}
+          </div>
+        </li>`;
+      })}
+    </ul>`;
   }
 
   return html`<div class="page pl">

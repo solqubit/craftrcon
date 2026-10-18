@@ -394,6 +394,19 @@
       "invalid_count": "Escribe un número entero de 1 a 6400.",
       "invalid_coords": "Escribe un número, ~, ~5 o ^ en cada casilla. ^ no se puede mezclar con los demás.",
       "empty_message": "Escribe un mensaje."
+    },
+    "online": "En línea",
+    "quickLabel": "Acciones rápidas para {name}",
+    "quick": {
+      "tell": "Enviar mensaje",
+      "teleport": "Teletransportar",
+      "gamemode": "Cambiar modo de juego",
+      "give": "Dar ítem"
+    },
+    "groups": {
+      "player": "Jugador",
+      "permissions": "Permisos",
+      "moderation": "Moderación"
     }
   },
   "moderation": {

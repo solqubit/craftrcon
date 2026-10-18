@@ -394,6 +394,19 @@
       "invalid_count": "Enter a whole number from 1 to 6400.",
       "invalid_coords": "Enter a number, ~, ~5 or ^ in each box. ^ can't be mixed with the others.",
       "empty_message": "Type a message."
+    },
+    "online": "Online",
+    "quickLabel": "Quick actions for {name}",
+    "quick": {
+      "tell": "Send message",
+      "teleport": "Teleport",
+      "gamemode": "Change gamemode",
+      "give": "Give item"
+    },
+    "groups": {
+      "player": "Player",
+      "permissions": "Permissions",
+      "moderation": "Moderation"
     }
   },
   "moderation": {

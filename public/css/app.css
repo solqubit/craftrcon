@@ -2523,35 +2523,117 @@ button, input, select, textarea {
   font-size: 13px;
 }
 
-.pl-card {
-  padding: 4px 14px;
-}
-
-.pl-list {
+/* Player cards: a responsive grid, each card with the head, the name, an
+   online badge, quick action buttons and the "more" menu. */
+.pl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.pl-row {
+.pl-player {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
+}
+
+.pl-player:hover,
+.pl-player:focus-within {
+  border-color: var(--border-3);
+  background: var(--panel-2);
+}
+
+.pl-player-top {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 9px 0;
 }
 
-.pl-row + .pl-row {
-  border-top: 1px solid var(--border);
+.pl-avatar {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 3px;
+  background: var(--sunken);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+}
+
+.pl-avatar img {
+  display: block;
+  border-radius: 4px;
+  image-rendering: pixelated;
+}
+
+.pl-player-info {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 
 .pl-name {
-  flex: 1;
-  min-width: 0;
   overflow: hidden;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 15px;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.pl-online {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.pl-online-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.pl-quick {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.pl-quick-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm);
+  background: var(--sunken);
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.15s var(--ease), background 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+
+.pl-quick-btn:hover:not(:disabled),
+.pl-quick-btn:focus-visible {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.pl-quick-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* Actions menu */
@@ -2582,7 +2664,9 @@ button, input, select, textarea {
 }
 
 .pl-menu-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   width: 100%;
   padding: 8px 10px;
   border: 0;
@@ -2592,6 +2676,29 @@ button, input, select, textarea {
   font-size: 13px;
   text-align: left;
   cursor: pointer;
+}
+
+.pl-menu-item .icon {
+  flex-shrink: 0;
+  color: var(--subtle);
+}
+
+.pl-menu-item:hover .icon,
+.pl-menu-item:focus-visible .icon {
+  color: inherit;
+}
+
+.pl-menu-danger .icon {
+  color: var(--danger-text);
+}
+
+.pl-menu-heading {
+  padding: 6px 10px 4px;
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .pl-menu-item:hover,

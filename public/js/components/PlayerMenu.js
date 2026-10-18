@@ -5,12 +5,34 @@ import { html, useEffect, useRef, useState } from '../../vendor/htm-preact.js';
 import { t } from '../i18n.js';
 import { Icon } from './Icon.js';
 
-// Groups of actions, separated by a line in the menu.
+// Groups of actions, each under a small heading. The everyday actions (message,
+// teleport, gamemode, give) are also quick buttons on the player card.
 const GROUPS = [
-  [{ action: 'kick' }, { action: 'ban', danger: true }],
-  [{ action: 'op' }, { action: 'deop' }],
-  [{ action: 'gamemode' }, { action: 'teleport' }, { action: 'give' }, { action: 'tell' }],
-  [{ action: 'whitelistAdd' }, { action: 'whitelistRemove' }],
+  {
+    key: 'player',
+    items: [
+      { action: 'tell', icon: 'message' },
+      { action: 'teleport', icon: 'teleport' },
+      { action: 'gamemode', icon: 'gamepad' },
+      { action: 'give', icon: 'gift' },
+    ],
+  },
+  {
+    key: 'permissions',
+    items: [
+      { action: 'op', icon: 'crown' },
+      { action: 'deop', icon: 'shieldOff' },
+      { action: 'whitelistAdd', icon: 'userPlus' },
+      { action: 'whitelistRemove', icon: 'userMinus' },
+    ],
+  },
+  {
+    key: 'moderation',
+    items: [
+      { action: 'kick', icon: 'logout', danger: true },
+      { action: 'ban', icon: 'ban', danger: true },
+    ],
+  },
 ];
 
 let nextId = 1;
@@ -96,8 +118,9 @@ export function PlayerMenu({ name, disabled = false, onSelect }) {
     html`<div id=${menuId} ref=${menuRef} class="pl-menu-list" role="menu" aria-label=${t('players.menu.label', { name })} onKeyDown=${onMenuKeyDown}>
       ${GROUPS.map(
         (group, index) => html`${index > 0 && html`<div class="pl-menu-sep" role="separator"></div>`}
-          ${group.map(
-            ({ action, danger }) => html`<button
+          <div class="pl-menu-heading" aria-hidden="true">${t(`players.groups.${group.key}`)}</div>
+          ${group.items.map(
+            ({ action, icon, danger }) => html`<button
               key=${action}
               type="button"
               role="menuitem"
@@ -105,7 +128,8 @@ export function PlayerMenu({ name, disabled = false, onSelect }) {
               class=${`pl-menu-item ${danger ? 'pl-menu-danger' : ''}`}
               onClick=${() => choose(action)}
             >
-              ${t(`players.actions.${action}`)}
+              <${Icon} name=${icon} size=${15} />
+              <span>${t(`players.actions.${action}`)}</span>
             </button>`,
           )}`,
       )}

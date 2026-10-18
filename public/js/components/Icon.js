@@ -50,6 +50,16 @@ const PATHS = {
   arrowDown: () => html`<path d="M12 5v14" /><path d="m19 12-7 7-7-7" />`,
   arrowUp: () => html`<path d="M12 19V5" /><path d="m5 12 7-7 7 7" />`,
   play: () => html`<polygon points="6 3 20 12 6 21 6 3" />`,
+  // Player actions.
+  message: () => html`<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />`,
+  teleport: () => html`<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" />`,
+  gamepad: () => html`<path d="M6 12h4" /><path d="M8 10v4" /><path d="M15 13h.01" /><path d="M18 11h.01" /><rect x="2" y="6" width="20" height="12" rx="2" />`,
+  gift: () => html`<rect x="3" y="8" width="18" height="4" rx="1" /><path d="M12 8v13" /><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7" /><path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8s1-5 4.5-5a2.5 2.5 0 0 1 0 5" />`,
+  ban: () => html`<circle cx="12" cy="12" r="10" /><path d="m4.9 4.9 14.2 14.2" />`,
+  crown: () => html`<path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7z" /><path d="M5 20h14" />`,
+  shieldOff: () => html`<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="M9 12h6" />`,
+  userPlus: () => html`<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M19 8v6" /><path d="M22 11h-6" />`,
+  userMinus: () => html`<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 11h-6" />`,
 };
 
 export function Icon({ name, size = 18, class: className = '' }) {
