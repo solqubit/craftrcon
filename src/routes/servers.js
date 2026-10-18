@@ -1,0 +1,121 @@
+import { RconClient, RconError } from '../minecraft/rcon.js';
+import { DEFAULT_RCON_PORT, NameTakenError, validateServerInput } from '../services/servers.js';
+
+const TEST_TIMEOUT_MS = 5000;
+const POSITIVE_INT = /^[1-9]\d{0,14}$/;
+
+const validation = (reply, fields) => reply.code(400).send({ error: 'validation', fields });
+const notFound = (reply) => reply.code(404).send({ error: 'not_found' });
+
+// Parses a route id; sends the error response itself and returns null if bad.
+function parseId(raw, reply) {
+  if (!POSITIVE_INT.test(raw)) {
+    validation(reply, { id: 'invalid' });
+    return null;
+  }
+  return Number(raw);
+}
+
+// Connection test with a throwaway client, never the shared manager: the
+// values under test may differ from the saved ones.
+async function probe({ host, port, password }) {
+  const client = new RconClient({ host, port, password, timeoutMs: TEST_TIMEOUT_MS });
+  try {
+    await client.connect();
+    const start = performance.now();
+    await client.exec('list');
+    return { ok: true, latencyMs: Math.round(performance.now() - start) };
+  } catch (err) {
+    return { ok: false, error: err instanceof RconError ? err.code : 'CLOSED' };
+  } finally {
+    client.close();
+  }
+}
+
+// All routes are private: the global hook in routes/auth.js guards /api/.
+export function registerServerRoutes(app) {
+  const svc = () => app.services.servers;
+
+  app.get('/api/servers', async () => svc().list());
+
+  // The static segment wins over /:id in the router.
+  app.post('/api/servers/test', async (request, reply) => {
+    const body = request.body !== null && typeof request.body === 'object' ? request.body : {};
+    const fields = {};
+
+    let id = null;
+    if (body.id !== undefined && body.id !== null) {
+      if (Number.isSafeInteger(body.id) && body.id > 0) id = body.id;
+      else fields.id = 'invalid';
+    }
+    if (typeof body.host !== 'string') fields.host = body.host === undefined ? 'required' : 'invalid';
+    else if (body.host.trim() === '') fields.host = 'required';
+    const port = body.rconPort ?? DEFAULT_RCON_PORT;
+    if (!Number.isInteger(port) || port < 1 || port > 65535) fields.rconPort = 'invalid';
+
+    let password = body.password;
+    const useStored = password === undefined || password === null || password === '';
+    if (!useStored && typeof password !== 'string') fields.password = 'invalid';
+    if (Object.keys(fields).length > 0) return validation(reply, fields);
+
+    if (id !== null && !svc().get(id)) return notFound(reply);
+    if (useStored) {
+      const stored = id === null ? null : svc().credentials(id);
+      if (!stored) return validation(reply, { password: 'required' });
+      password = stored.password;
+    }
+
+    return probe({ host: body.host.trim(), port, password });
+  });
+
+  app.post('/api/servers', async (request, reply) => {
+    const { fields, value } = validateServerInput(request.body);
+    if (Object.keys(fields).length > 0) return validation(reply, fields);
+    let server;
+    try {
+      server = svc().create(value);
+    } catch (err) {
+      if (err instanceof NameTakenError) return reply.code(409).send({ error: 'name_taken' });
+      throw err;
+    }
+    app.services.audit.log({ serverId: server.id, origin: 'ui', action: 'server_create', detail: server.name });
+    return reply.code(201).send(server);
+  });
+
+  app.get('/api/servers/:id', async (request, reply) => {
+    const id = parseId(request.params.id, reply);
+    if (id === null) return;
+    return svc().get(id) ?? notFound(reply);
+  });
+
+  app.put('/api/servers/:id', async (request, reply) => {
+    const id = parseId(request.params.id, reply);
+    if (id === null) return;
+    const current = svc().get(id);
+    if (!current) return notFound(reply);
+    const { fields, value } = validateServerInput(request.body, current);
+    if (Object.keys(fields).length > 0) return validation(reply, fields);
+    let server;
+    try {
+      server = svc().update(id, value);
+    } catch (err) {
+      if (err instanceof NameTakenError) return reply.code(409).send({ error: 'name_taken' });
+      throw err;
+    }
+    if (!server) return notFound(reply);
+    app.services.manager.invalidate(id);
+    app.services.audit.log({ serverId: id, origin: 'ui', action: 'server_update', detail: server.name });
+    return server;
+  });
+
+  app.delete('/api/servers/:id', async (request, reply) => {
+    const id = parseId(request.params.id, reply);
+    if (id === null) return;
+    const current = svc().get(id);
+    if (!current || !svc().remove(id)) return notFound(reply);
+    app.services.manager.invalidate(id);
+    // Logged after the delete, with no server_id: the row would cascade away otherwise.
+    app.services.audit.log({ origin: 'ui', action: 'server_delete', detail: current.name });
+    return reply.code(204).send();
+  });
+}

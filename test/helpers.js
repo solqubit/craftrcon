@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import { openDb } from '../src/db/index.js';
@@ -5,21 +6,27 @@ import { hashPassword } from '../src/security/password.js';
 import { createSettings } from '../src/services/settings.js';
 import { createSessions } from '../src/security/sessions.js';
 import { createAudit } from '../src/services/audit.js';
+import { createServers } from '../src/services/servers.js';
+import { ConnectionManager } from '../src/minecraft/connection.js';
 
 export const TEST_HOST = 'panel.test';
 export const TEST_ORIGIN = `http://${TEST_HOST}`;
 
-// Builds a real app on an in-memory database with real services. `login()`
+// Builds a real app on an in-memory database with real services (including
+// servers with a throwaway encryption key, and a connection manager). `login()`
 // returns headers (cookie + same-origin Origin/Host) for authenticated calls.
 // Pass `password: null` to leave the admin password unset.
 export async function makeApp({ password = 'correct-horse-battery', config = {}, services: extra = {} } = {}) {
   const db = openDb(':memory:');
   const settings = createSettings(db);
   if (password) settings.set('admin_password_hash', await hashPassword(password));
+  const servers = createServers(db, randomBytes(32));
   const services = {
     settings,
     sessions: createSessions(db),
     audit: createAudit(db),
+    servers,
+    manager: new ConnectionManager((id) => servers.credentials(id)),
     ...extra,
   };
   const app = buildApp({ config: { ...loadConfig({}), ...config }, db, services });
