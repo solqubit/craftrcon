@@ -292,11 +292,22 @@ caddy_resolve() {
   [ -n "$CADDY_VERSION" ] || die ERR_CADDY_RELEASE
 }
 
+# caddy_data_check: dies when CADDY_DATA is a symbolic link or exists as something other
+# than a folder. It lives in the service user's data folder, so a process of that user
+# could have planted a link there to make root hand the target over (review C2a). Runs in
+# phase 1 (ask_domain) and again in setup_caddy before anything is downloaded.
+caddy_data_check() {
+  if [ -L "$CADDY_DATA" ] || { [ -e "$CADDY_DATA" ] && [ ! -d "$CADDY_DATA" ]; }; then
+    die ERR_CADDY_DATA_UNSAFE "$CADDY_DATA" "$CADDY_DATA"
+  fi
+}
+
 # setup_caddy DOMAIN PORT WORKDIR: downloads the official Caddy binary (sha512 checked
 # against caddy_<v>_checksums.txt), installs it in CADDY_BIN, writes the Caddyfile and
 # the craftrcon-proxy service (run as craftrcon, allowed to bind 80/443).
 setup_caddy() {
   local _domain="$1" _port="$2" _work="$3" _file _base _want _got
+  caddy_data_check
   [ -n "${CADDY_VERSION:-}" ] || caddy_resolve
   _file="caddy_${CADDY_VERSION}_linux_$(caddy_arch).tar.gz"
   _base="$CADDY_DOWNLOAD_BASE/download/v$CADDY_VERSION"
@@ -313,10 +324,15 @@ setup_caddy() {
   tar -xzf "$_work/$_file" -C "$_work/caddy" caddy
   install -m 0755 -o root -g root "$_work/caddy/caddy" "$CADDY_BIN"
 
-  # Explicit owners and modes (never the umask), also for folders left by a previous run.
-  install -d -m 0750 -o "$SVC_USER" -g "$SVC_USER" "$CADDY_DATA"
-  chown "$SVC_USER:$SVC_USER" "$CADDY_DATA"
-  chmod 0750 "$CADDY_DATA"
+  # Explicit owners and modes (never the umask), also for a folder left by a previous run.
+  # Root never follows a link here: the folder is created by the service user (mkdir
+  # fails on any name that appeared since the check), chown -h changes a link itself,
+  # and chmod (which would follow one) runs as the service user, who gains nothing
+  # from a link swapped in meanwhile.
+  caddy_data_check
+  if [ ! -e "$CADDY_DATA" ]; then (cd / && as_craftrcon mkdir -m 0750 "$CADDY_DATA"); fi
+  if [ "$(stat -c %U -- "$CADDY_DATA")" != "$SVC_USER" ]; then chown -h "$SVC_USER:$SVC_USER" "$CADDY_DATA"; fi
+  (cd / && as_craftrcon chmod 0750 "$CADDY_DATA")
   render_template "$TEMPLATE_DIR/Caddyfile.tmpl" "$CADDYFILE" "DOMAIN=$_domain" "PORT=$_port"
   chown root:"$SVC_USER" "$CADDYFILE"
   chmod 0640 "$CADDYFILE"

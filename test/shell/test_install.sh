@@ -277,6 +277,67 @@ assert_eq "2" "$(grep -c -- '--proto =https --proto-redir =https' "$TMP/dl/curl.
 rm -f "$TMP/dl/curl.log"
 flow 'caddy_resolve' "${dl_env[@]}" CADDY_RELEASES_API=https://api.test/latest >/dev/null 2>&1 <"$FIX/caddy-release.json" || true
 assert_contains "--proto =https" "$(cat "$TMP/dl/curl.log" 2>/dev/null)" "caddy: release lookup is https-only"
+
+echo "caddy data folder is never followed (review C2a)"
+CAN_SYMLINK=0
+if ln -s "$TMP" "$TMP/.probe" 2>/dev/null && [ -L "$TMP/.probe" ]; then CAN_SYMLINK=1; fi
+rm -f "$TMP/.probe"
+C2A="$TMP/c2a"
+# c2a_setup: runs setup_caddy with the data folder at $C2A/data/caddy; prints output, rc=N.
+c2a_setup() {
+  local out rc=0
+  out="$(flow "CADDY_BIN='$C2A/opt/caddy'; CADDY_DATA='$C2A/data/caddy'; CADDYFILE='$C2A/etc/Caddyfile'; CADDY_VERSION=2.10.2; SVC_USER=${C2A_USER:-craftrcon}
+    write_proxy_service() { :; }
+    chown() { case \"\${*: -1}\" in \"\$CADDYFILE\") return 0 ;; esac; echo \"chown \$*\" >>'$C2A/calls'; command chown \"\$@\"; }
+    w=\$(mktemp -d); setup_caddy panel.example.com 8080 \"\$w\"" "${dl_env[@]}" 2>&1)" || rc=$?
+  printf '%s
+rc=%s' "$out" "$rc"
+}
+rm -rf "$C2A" && mkdir -p "$C2A/data" "$C2A/victim" && rm -f "$TMP/dl/curl.log"
+echo "not a folder" >"$C2A/data/caddy"
+out="$(c2a_setup)"
+assert_contains "rc=1" "$out" "caddy data: a file in its place stops setup_caddy"
+assert_contains "$C2A/data/caddy is a symbolic link or is not a folder" "$out" "caddy data: the refusal is explained"
+assert_eq "absent|not a folder" "$([ -e "$TMP/dl/curl.log" ] && echo present || echo absent)|$(cat "$C2A/data/caddy")" "caddy data: refused before any download or change"
+rc=0; out="$(flow "NONINTERACTIVE=1; CADDY_DATA='$C2A/data/caddy'; ask_domain" CRAFTRCON_DOMAIN=panel.example.com "${free_ports[@]}" 2>&1)" || rc=$?
+assert_eq "1" "$rc" "caddy data: phase 1 refuses it once a domain is chosen"
+assert_contains "is a symbolic link or is not a folder" "$out" "caddy data: phase 1 explains the refusal"
+assert_contains "es un enlace simbólico o no es una carpeta" "$(flow "set_lang es; NONINTERACTIVE=1; CADDY_DATA='$C2A/data/caddy'; ask_domain" CRAFTRCON_DOMAIN=panel.example.com "${free_ports[@]}" 2>&1)" "caddy data: refusal in Spanish"
+assert_eq "ok" "$(flow "NONINTERACTIVE=1; CADDY_DATA='$C2A/data/none'; ask_domain 2>/dev/null && echo ok" CRAFTRCON_DOMAIN=panel.example.com "${free_ports[@]}")" "caddy data: an absent folder passes phase 1"
+if [ "$CAN_SYMLINK" = 1 ]; then
+  rm -f "$C2A/data/caddy" && ln -s "$C2A/victim" "$C2A/data/caddy"
+  chmod 0755 "$C2A/victim"
+  out="$(c2a_setup)"
+  assert_contains "rc=1" "$out" "caddy data: a planted link stops setup_caddy"
+  assert_eq "absent|755|$(id -un)" "$([ -e "$TMP/dl/curl.log" ] && echo present || echo absent)|$(stat -c '%a|%U' "$C2A/victim")" "caddy data: the link target is untouched"
+else
+  echo "  (skipped: this system cannot create symbolic links)"
+fi
+if [ "$(id -u)" -eq 0 ] && id daemon >/dev/null 2>&1; then
+  # The whole setup_caddy as root, with a real (fake) Caddy archive and "daemon" as the
+  # service user: the review's PoC (a link to a root folder) and the normal paths.
+  mkdir -p "$TMP/c2a-tar" && printf '#!/bin/sh
+' >"$TMP/c2a-tar/caddy" && chmod +x "$TMP/c2a-tar/caddy"
+  tar -czf "$TMP/dl/payload" -C "$TMP/c2a-tar" caddy
+  printf '%s  caddy_2.10.2_linux_amd64.tar.gz
+' "$(sha512sum "$TMP/dl/payload" | cut -d' ' -f1)" >"$TMP/dl/caddy_checksums.txt"
+  chmod 0755 "$TMP" # the service user must reach its data folder below it
+  c2a_reset() { rm -rf "$C2A" && mkdir -p "$C2A/data" "$C2A/opt" "$C2A/etc" "$C2A/victim" && chown daemon "$C2A/data" && chmod 0750 "$C2A/data" && chmod 0755 "$C2A/victim" && chmod 0755 "$C2A"; }
+  c2a_reset
+  ln -s "$C2A/victim" "$C2A/data/caddy"
+  out="$(C2A_USER=daemon c2a_setup)"
+  assert_contains "rc=1" "$out" "caddy data (root): a planted link stops setup_caddy"
+  assert_eq "root|755|absent" "$(stat -c '%U|%a' "$C2A/victim")|$([ -e "$C2A/opt/caddy" ] && echo present || echo absent)" "caddy data (root): the link target keeps root 755, nothing installed"
+  c2a_reset
+  out="$(C2A_USER=daemon c2a_setup)"
+  assert_contains "rc=0" "$out" "caddy data (root): absent folder: setup_caddy succeeds"
+  assert_eq "daemon|750|" "$(stat -c '%U|%a' "$C2A/data/caddy")|$(cat "$C2A/calls" 2>/dev/null)" "caddy data (root): created by the service user with 0750, no chown needed"
+  c2a_reset
+  mkdir "$C2A/data/caddy" && chmod 0777 "$C2A/data/caddy"
+  out="$(C2A_USER=daemon c2a_setup)"
+  assert_contains "rc=0" "$out" "caddy data (root): a root-owned leftover folder: setup_caddy succeeds"
+  assert_eq "daemon|750|chown -h daemon:daemon $C2A/data/caddy" "$(stat -c '%U|%a' "$C2A/data/caddy")|$(cat "$C2A/calls")" "caddy data (root): leftover gets chown -h and 0750"
+fi
 rm -f "$TMP/dl/curl.log"
 echo "203.0.113.7" >"$TMP/dl/payload"
 assert_eq "203.0.113.7" "$(flow 'public_ip' "${dl_env[@]}")" "public_ip via the ipify stub"

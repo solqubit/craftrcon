@@ -268,6 +268,7 @@ ask_domain() {
   fi
   [ -n "$DOMAIN" ] || return 0
   [ "$OPT_NO_SERVICE" != 1 ] || die ERR_NO_SERVICE_DOMAIN
+  caddy_data_check
   warn DOMAIN_NOTE "$DOMAIN"
   if command -v getent >/dev/null 2>&1 && ! getent hosts "$DOMAIN" >/dev/null 2>&1; then
     warn DOMAIN_NOT_RESOLVING "$DOMAIN"
