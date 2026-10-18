@@ -237,12 +237,12 @@ version_cmp() {
 # is_installed: true when installed.json exists.
 is_installed() { [ -f "$INSTALLED_FILE" ]; }
 
-# installed_version: prints the top-level "version" of installed.json. Prints nothing
-# (and still returns 0, so `v="$(installed_version)"` is safe under set -e) when the
-# file is absent or has no such key; nested "version" keys are ignored.
-installed_version() {
+# installed_string KEY: prints the top-level string value of KEY in installed.json. Prints
+# nothing (and still returns 0, so `v="$(installed_string domain)"` is safe under set -e)
+# when the file is absent or KEY is missing or not a string (null); nested keys are ignored.
+installed_string() {
   is_installed || return 0
-  awk '
+  awk -v key="$1" '
     BEGIN { RS = "\001" }
     {
       s = $0; n = length(s); depth = 0; i = 1
@@ -261,7 +261,7 @@ installed_version() {
           }
           k = j + 1
           while (substr(s, k, 1) ~ /[ \t\r\n]/) k++
-          if (depth == 1 && tok == "version" && substr(s, k, 1) == ":") {
+          if (depth == 1 && tok == key && substr(s, k, 1) == ":") {
             k++
             while (substr(s, k, 1) ~ /[ \t\r\n]/) k++
             if (substr(s, k, 1) == "\"") {
@@ -278,6 +278,9 @@ installed_version() {
     }
   ' "$INSTALLED_FILE"
 }
+
+# installed_version: prints the top-level "version" of installed.json (see installed_string).
+installed_version() { installed_string version; }
 
 # installed_port: prints the top-level "port" of installed.json (nothing if absent). The
 # firewall entries also have a "port", so that array is cut out first.

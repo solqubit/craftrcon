@@ -343,11 +343,12 @@ public_ip() {
   if [[ "$_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then echo "$_ip"; fi
 }
 
-# show_urls PORT DOMAIN: prints where to open the panel (https://DOMAIN when set).
+# show_urls PORT DOMAIN [TITLE]: prints TITLE (default "CraftRCON installed!") and where to
+# open the panel (https://DOMAIN when set).
 show_urls() {
-  local _port="$1" _domain="${2:-}" _pub _ip _first=1 _label
+  local _port="$1" _domain="${2:-}" _title="${3:-$(msg URL_INSTALLED)}" _pub _ip _first=1 _label
   _label="$(msg URL_OPEN)"
-  printf '\n%s✔ %s%s\n' "$C_GREEN" "$(msg URL_INSTALLED)" "$C_RESET"
+  printf '\n%s✔ %s%s\n' "$C_GREEN" "$_title" "$C_RESET"
   if [ -n "$_domain" ]; then
     printf '  %s  https://%s\n' "$_label" "$_domain"
     return 0

@@ -120,7 +120,7 @@ assert_contains "What do you want to do?" "$out" "declining the update goes on t
 # No update-flow.sh yet: says so and continues with the menu.
 rm -f "$COPY/scripts/update-flow.sh"
 out="$(run_main $'y\n3')"
-assert_contains "not available in this copy yet" "$out" "no update-flow.sh: says it is not available"
+assert_contains "has no scripts/update-flow.sh" "$out" "no update-flow.sh: says it is not available"
 assert_contains "ACTION:uninstall" "$out" "no update-flow.sh: continues with the menu"
 # With update-flow.sh, yes replaces the process with it and keeps the language.
 printf '#!/usr/bin/env bash\necho "UPDATE-FLOW ARGS: $*"\n' >"$COPY/scripts/update-flow.sh"

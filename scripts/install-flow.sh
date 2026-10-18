@@ -17,8 +17,9 @@ FLOW_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$FLOW_DIR/lib/node.sh"
 # shellcheck source=lib/service.sh
 . "$FLOW_DIR/lib/service.sh"
+# shellcheck source=lib/flow.sh
+. "$FLOW_DIR/lib/flow.sh"
 
-DEFAULT_PORT=8080
 MIN_PASSWORD_LENGTH=8
 MAX_TRIES=5
 HEALTH_TIMEOUT=30
@@ -46,33 +47,8 @@ CURRENT_STEP=''
 
 usage() { msg USAGE; }
 
-usage_error() { # usage_error KEY [ARGS...]
-  printf '%serror%s %s\n\n' "$C_RED" "$C_RESET" "$(msg "$@")" >&2
-  usage >&2
-  exit 2
-}
-
-_set_lang_opt() {
-  case "$1" in
-    en | es) set_lang "$1" ;;
-    *) usage_error ERR_LANG "$1" ;;
-  esac
-}
-
 parse_args() {
-  local _a
-  # --lang first, so every later message (including usage errors) is in that language.
-  for ((_a = 1; _a <= $#; _a++)); do
-    case "${!_a}" in
-      --lang=*) _set_lang_opt "${!_a#--lang=}" ;;
-      --lang)
-        if ((_a < $#)); then
-          _a=$((_a + 1))
-          _set_lang_opt "${!_a}"
-        fi
-        ;;
-    esac
-  done
+  apply_lang_args "$@"
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --lang)
@@ -136,13 +112,6 @@ next_free_port() {
   return 1
 }
 
-is_yes() {
-  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
-    y | yes | s | si | sí) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
 # --------------------------------------------------------------------- json --
 
 # config_json PORT DOMAIN: the /etc/craftrcon/config.json document.
@@ -157,45 +126,7 @@ config_json() {
     "$_host" "$1" "$DATA_DIR" "$_domain" "$_trust"
 }
 
-# installed_json VERSION COMMIT INSTALLED_AT PORT DOMAIN [TOOL:PORT...]
-installed_json() {
-  local _commit=null _domain=null _fw='' _e
-  if [ -n "$2" ]; then _commit="\"$2\""; fi
-  if [ -n "$5" ]; then _domain="\"$5\""; fi
-  for _e in "${@:6}"; do
-    _fw+="${_fw:+, }{ \"tool\": \"${_e%%:*}\", \"port\": ${_e#*:} }"
-  done
-  printf '{\n  "version": "%s",\n  "commit": %s,\n  "installedAt": "%s",\n  "port": %s,\n  "domain": %s,\n  "firewall": [%s]\n}\n' \
-    "$1" "$_commit" "$3" "$4" "$_domain" "$_fw"
-}
-
-# source_commit: git HEAD of the copy being installed, or nothing (no .git or no git).
-source_commit() {
-  local _c=''
-  if [ -e "$SRC_DIR/.git" ] && command -v git >/dev/null 2>&1; then
-    _c="$(git -c safe.directory="$SRC_DIR" -C "$SRC_DIR" rev-parse HEAD 2>/dev/null || true)"
-  fi
-  if [[ "$_c" =~ ^[0-9a-f]{40}$ ]]; then echo "$_c"; fi
-}
-
 # -------------------------------------------------------------- phase 1: checks --
-
-check_source() {
-  local _f _real_src _real_opt
-  for _f in VERSION package.json package-lock.json src/server.js src/cli.js public locales \
-    scripts/templates/craftrcon.service scripts/templates/craftrcon.openrc; do
-    [ -e "$SRC_DIR/$_f" ] || die ERR_SOURCE_INCOMPLETE "$_f"
-  done
-  SOURCE_VERSION="$(tr -d '[:space:]' <"$SRC_DIR/VERSION")"
-  [[ "$SOURCE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die ERR_SOURCE_INCOMPLETE VERSION
-  # Installing from inside /opt/craftrcon would delete the source while copying it.
-  _real_src="$(cd "$SRC_DIR" && pwd -P)"
-  _real_opt="$OPT_DIR"
-  if [ -d "$OPT_DIR" ]; then _real_opt="$(cd "$OPT_DIR" && pwd -P)"; fi
-  case "$_real_src/" in
-    "$_real_opt"/*) die ERR_SOURCE_IN_TARGET "$OPT_DIR" ;;
-  esac
-}
 
 check_system() {
   require_root ./install.sh
@@ -205,7 +136,7 @@ check_system() {
   if [ "$OPT_NO_SERVICE" != 1 ] && [ "$INIT" != systemd ] && [ "$INIT" != openrc ]; then
     die ERR_NO_INIT
   fi
-  check_source
+  check_source ./install.sh
   firewall_detect
 }
 
@@ -363,20 +294,7 @@ ask_firewall() {
 
 # ------------------------------------------------------- phase 2: bookkeeping --
 
-begin_step() { # begin_step N KEY [ARGS...]
-  local _n="$1"
-  shift
-  CURRENT_STEP="$(msg "$@")"
-  step "$_n" "$TOTAL_STEPS" "$@"
-}
-
 record_change() { CHANGES+=("$(msg "$@")"); }
-
-on_error() { # on_error LINE COMMAND (ERR trap; only the main shell reports)
-  if [ "${BASH_SUBSHELL:-0}" -eq 0 ]; then
-    printf '%serror%s %s\n' "$C_RED" "$C_RESET" "$(msg ERR_COMMAND "$1" "$2")" >&2
-  fi
-}
 
 on_exit() {
   local _rc=$? _c
@@ -527,45 +445,19 @@ step_user() {
   service_user_can_run_node || die ERR_NODE_NOT_RUNNABLE "$NODE_BIN" "$SVC_USER"
 }
 
-# app_items: the top-level entries of the source copy that go into APP_DIR. Exclusions
-# are matched at the top level only (public/js/data must be copied, ./data must not).
-app_items() {
-  local _f _base
-  for _f in "$SRC_DIR"/* "$SRC_DIR"/.[!.]* "$SRC_DIR"/..?*; do
-    [ -e "$_f" ] || [ -L "$_f" ] || continue
-    _base="${_f##*/}"
-    case "$_base" in
-      .git | .superpowers | .claude | node_modules | data | test | docs) continue ;;
-    esac
-    printf '%s\n' "$_base"
-  done
-}
-
 step_app() {
-  local _items=()
   begin_step 4 STEP_APP "$APP_DIR"
-  mapfile -t _items < <(app_items)
   if [ -e "$APP_DIR" ]; then
     info APP_REPLACING "$APP_DIR"
     rm -rf "$APP_DIR"
   fi
-  mkdir -p "$APP_DIR"
-  chmod 0755 "$APP_DIR"
-  tar -C "$SRC_DIR" -cf - "${_items[@]}" | tar -C "$APP_DIR" -xf - --no-same-owner
+  copy_app
   record_change CHANGE_APP "$APP_DIR"
 }
 
 step_deps() {
   begin_step 5 STEP_DEPS
-  (
-    cd "$APP_DIR"
-    PATH="$(dirname "$NODE_BIN"):$PATH" NPM_CONFIG_UPDATE_NOTIFIER=false \
-      "$NPM_BIN" ci --omit=dev --ignore-scripts --no-audit --no-fund --loglevel=error
-  )
-  # root owns the code; the service user can only read it.
-  chown -R root:root "$APP_DIR"
-  chmod -R u+rwX,go+rX,go-w "$APP_DIR"
-  if command -v restorecon >/dev/null 2>&1; then restorecon -R "$OPT_DIR" >/dev/null 2>&1 || true; fi
+  install_app_deps
 }
 
 # run_cli ARGS...: node src/cli.js ARGS as the service user (stdin passes through).
@@ -639,18 +531,6 @@ step_firewall() {
   open_firewall "${_ports[@]}"
 }
 
-# start_background: --no-service (containers without init): nohup as the service user.
-start_background() {
-  touch "$LOG_FILE"
-  chown "$SVC_USER:$SVC_USER" "$LOG_FILE"
-  chmod 0640 "$LOG_FILE"
-  (
-    cd "$APP_DIR"
-    nohup "${RUN_AS[@]}" env CRAFTRCON_CONFIG="$CONFIG_FILE" NODE_ENV=production "$NODE_BIN" \
-      --disable-warning=ExperimentalWarning "$APP_DIR/src/server.js" >>"$LOG_FILE" 2>&1 </dev/null &
-  )
-}
-
 step_start() {
   local _logs
   begin_step 9 STEP_START
@@ -689,15 +569,6 @@ show_result() {
 # Reached when installed.json exists. Showing the versions never needs root; changing
 # anything does.
 
-# read_source_version: SOURCE_VERSION of this copy, or '' when VERSION is missing/invalid
-# (the menu then simply does not compare; check_source is the strict check for installs).
-read_source_version() {
-  local _v=''
-  SOURCE_VERSION=''
-  if [ -r "$SRC_DIR/VERSION" ]; then _v="$(tr -d '[:space:]' <"$SRC_DIR/VERSION")"; fi
-  if [[ "$_v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then SOURCE_VERSION="$_v"; fi
-}
-
 # show_versions: prints both versions; sets INSTALLED_VERSION and COPY_CMP (1 when this
 # copy is newer than the installed version, -1 older, 0 equal, '' when either is unknown).
 show_versions() {
@@ -711,69 +582,19 @@ show_versions() {
 }
 
 # offer_update: this copy is newer. Offers ./update.sh; on yes it replaces this process
-# with the update flow (same language). Until update-flow.sh exists it says so and returns.
+# with the update flow (same language; --yes, as the user just agreed; --no-service if
+# given). If update-flow.sh is missing (a damaged copy) it says so and returns.
 offer_update() {
-  local answer update="$FLOW_DIR/update-flow.sh"
+  local answer update="$FLOW_DIR/update-flow.sh" args
   info COPY_NEWER "$SOURCE_VERSION" "$INSTALLED_VERSION"
   ask Q_RUN_UPDATE y answer
   is_yes "$answer" || return 0
   if [ -f "$update" ]; then
-    exec bash "$update" --lang "$CRAFTRCON_LANG"
+    args=(--lang "$CRAFTRCON_LANG" --yes)
+    if [ "$OPT_NO_SERVICE" = 1 ]; then args+=(--no-service); fi
+    exec bash "$update" "${args[@]}"
   fi
   warn UPDATE_NOT_AVAILABLE
-}
-
-# locate_node: NODE_BIN of the installed panel (the private Node, else the system one on
-# Alpine) and a check that the application is there.
-locate_node() {
-  if [ -x "$NODE_DIR/bin/node" ]; then
-    NODE_BIN="$NODE_DIR/bin/node"
-  else
-    NODE_BIN="$(command -v node || true)"
-  fi
-  if [ -z "$NODE_BIN" ] || [ ! -x "$NODE_BIN" ]; then die ERR_NODE_MISSING "$NODE_DIR/bin/node"; fi
-  [ -f "$APP_DIR/src/cli.js" ] || die ERR_APP_MISSING "$APP_DIR"
-  export NODE_BIN
-}
-
-# panel_port: the port the panel listens on (config.json, else installed.json).
-panel_port() {
-  local _p=''
-  if [ -r "$CONFIG_FILE" ]; then
-    _p="$(sed -n 's/.*"port"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$CONFIG_FILE")"
-  fi
-  [ -n "$_p" ] || _p="$(installed_port)"
-  echo "${_p:-$DEFAULT_PORT}"
-}
-
-# panel_pids: pids of a panel started without a service (node ... APP_DIR/src/server.js).
-panel_pids() {
-  local _p _args
-  for _p in /proc/[0-9]*; do
-    [ -r "$_p/cmdline" ] || continue
-    _args="$(tr '\0' ' ' <"$_p/cmdline" 2>/dev/null || true)"
-    # argv[0] must be node itself: the runuser/su wrappers also carry the script path.
-    case "${_args%% *}" in
-      node | */node)
-        case "$_args" in *" $APP_DIR/src/server.js "*) echo "${_p#/proc/}" ;; esac
-        ;;
-    esac
-  done
-}
-
-# stop_background_panel: ends a panel that runs without a service (--no-service installs).
-# Returns 1 when there was none.
-stop_background_panel() {
-  local _pids _pid _i
-  _pids="$(panel_pids)"
-  [ -n "$_pids" ] || return 1
-  for _pid in $_pids; do kill "$_pid" 2>/dev/null || true; done
-  for ((_i = 0; _i < 20; _i++)); do
-    [ -n "$(panel_pids)" ] || return 0
-    sleep 0.5
-  done
-  for _pid in $(panel_pids); do kill -9 "$_pid" 2>/dev/null || true; done
-  return 0
 }
 
 # ---- 1) change the password
