@@ -78,6 +78,10 @@ export class ServerConnection {
           const client = await this.#connect();
           job.resolve(await client.exec(job.cmd));
         } catch (err) {
+          // A dead socket must never leave the state at 'ready': reconnect next time.
+          if (err instanceof RconError && err.code === 'CLOSED' && this.#state === 'ready') {
+            this.#state = 'idle';
+          }
           job.reject(err);
         }
       }
@@ -87,13 +91,15 @@ export class ServerConnection {
   }
 
   async #connect() {
-    if (this.#state === 'ready') return this.#client;
-    if (this.#lastError && this.#now() < this.#retryAt) {
+    // The copied state may be stale (the socket can die between events), so even
+    // when 'ready' go through client.connect(), which is instant on a live client.
+    const wasReady = this.#state === 'ready';
+    if (!wasReady && this.#lastError && this.#now() < this.#retryAt) {
       const last = this.#lastError;
       throw new RconError(last.code, last.message, { cause: last });
     }
     const epoch = this.#epoch;
-    this.#state = 'connecting';
+    if (!wasReady) this.#state = 'connecting';
     try {
       this.#client ??= this.#createClient({ ...this.#options, ...(await this.#options.lateConfig) });
       if (epoch !== this.#epoch) throw new RconError('CLOSED', 'Connection closed');
@@ -108,6 +114,8 @@ export class ServerConnection {
       if (epoch === this.#epoch) this.#startBackoff(err);
       throw err;
     }
+    // close() while the connect resolved: the socket is gone, do not report 'ready'.
+    if (epoch !== this.#epoch) throw new RconError('CLOSED', 'Connection closed');
     this.#failures = 0;
     this.#lastError = null;
     this.#state = 'ready';

@@ -257,7 +257,10 @@ test('a successful connect resets the backoff', async () => {
     await fake.setOnline(true);
     await conn.exec('list'); // success resets
     await fake.setOnline(false); // drop + offline
-    while (conn.state !== 'idle') await sleep(2); // client noticed the drop
+    for (let i = 0; conn.state !== 'idle'; i++) {
+      assert.ok(i < 500, 'client never noticed the drop');
+      await sleep(2); // client noticed the drop
+    }
     await rejectsWith(conn.exec('list'), 'ECONNREFUSED'); // first failure again: 1 s, not 4 s
     await fake.setOnline(true);
     clock.advance(1000);
@@ -301,6 +304,57 @@ test('close() rejects queued commands with CLOSED; a later exec reconnects', asy
     assert.equal(conn.state, 'idle');
     assert.match(await conn.exec('list'), /players online/);
   });
+});
+
+// Regression: the connection is torn down right after the auth response resolves
+// connect(). The ServerConnection must not stay "ready" with no socket.
+test('a connection torn down right after auth does not get stuck in ready', async () => {
+  const fake = await startFakeMinecraft();
+  const sockets = new Set();
+  const stats = { attempts: 0 };
+  const proxy = net.createServer((client) => {
+    stats.attempts += 1;
+    sockets.add(client);
+    client.on('error', () => {});
+    client.on('close', () => sockets.delete(client));
+    if (stats.attempts > 1) {
+      const upstream = net.connect(fake.rconPort, '127.0.0.1');
+      sockets.add(upstream);
+      upstream.on('error', () => client.destroy());
+      client.on('close', () => upstream.destroy());
+      client.pipe(upstream);
+      upstream.pipe(client);
+      return;
+    }
+    // First attempt: auth OK plus an invalid packet (length 3) in the same chunk.
+    client.once('data', (chunk) => {
+      const authOk = Buffer.alloc(14);
+      authOk.writeInt32LE(10, 0);
+      authOk.writeInt32LE(chunk.readInt32LE(4), 4);
+      authOk.writeInt32LE(2, 8);
+      const bad = Buffer.alloc(4);
+      bad.writeInt32LE(3, 0);
+      client.write(Buffer.concat([authOk, bad]));
+    });
+  });
+  await new Promise((resolve) => proxy.listen(0, '127.0.0.1', resolve));
+  const conn = new ServerConnection({
+    host: '127.0.0.1',
+    port: proxy.address().port,
+    password: 'test',
+  });
+  try {
+    await rejectsWith(conn.exec('list'), 'CLOSED');
+    assert.notEqual(conn.state, 'ready');
+    assert.match(await conn.exec('list'), /players online/);
+    assert.ok(stats.attempts >= 2, 'a later exec must open a new connection');
+    assert.equal(conn.state, 'ready');
+  } finally {
+    conn.close();
+    for (const s of sockets) s.destroy();
+    await new Promise((resolve) => proxy.close(resolve));
+    await fake.close();
+  }
 });
 
 test('close() while connecting does not start backoff', async () => {
