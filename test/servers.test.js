@@ -103,26 +103,77 @@ test('PUT without password keeps the old one, with a new one replaces it', async
   const { call, services } = await setup(t);
   const { id } = (await call('POST', '/api/servers', valid())).json();
 
-  const keep = await call('PUT', `/api/servers/${id}`, { name: 'Renamed', host: 'mc.example.com' });
+  const keep = await call('PUT', `/api/servers/${id}`, { name: 'Renamed', icon: 'sword' });
   assert.equal(keep.statusCode, 200);
   assert.equal(keep.json().name, 'Renamed');
-  assert.equal(keep.json().host, 'mc.example.com');
-  assert.equal(keep.json().rconPort, 25575, 'absent fields keep their value');
-  assert.deepEqual(services.servers.credentials(id), {
-    host: 'mc.example.com',
-    rcon_port: 25575,
-    password: PW,
-  });
+  assert.equal(keep.json().icon, 'sword');
+  assert.equal(keep.json().host, '10.0.0.5', 'absent fields keep their value');
+  assert.deepEqual(services.servers.credentials(id), { host: '10.0.0.5', rcon_port: 25575, password: PW });
 
   await call('PUT', `/api/servers/${id}`, { password: '' });
   assert.equal(services.servers.credentials(id).password, PW, 'empty password means unchanged');
 
-  await call('PUT', `/api/servers/${id}`, { password: 'brandnew', rconPort: 25580 });
+  const moved = await call('PUT', `/api/servers/${id}`, { host: 'mc.example.com', rconPort: 25580, password: 'brandnew' });
+  assert.equal(moved.statusCode, 200);
   assert.deepEqual(services.servers.credentials(id), {
     host: 'mc.example.com',
     rcon_port: 25580,
     password: 'brandnew',
   });
+
+  const sameHost = await call('PUT', `/api/servers/${id}`, { host: ' MC.Example.com ', color: 'sky' });
+  assert.equal(sameHost.statusCode, 200, 'a host that only differs in case is the same address');
+  assert.equal(services.servers.credentials(id).password, 'brandnew');
+});
+
+test('PUT cannot point the saved password at another host or port', async (t) => {
+  const { call, services } = await setup(t);
+  const saved = await startFakeMinecraft({ password: 'goodpw' });
+  t.after(() => saved.close());
+  const { id } = (
+    await call('POST', '/api/servers', valid({ host: '127.0.0.1', rconPort: saved.rconPort, password: 'goodpw' }))
+  ).json();
+  const before = (await call('GET', `/api/servers/${id}`)).json();
+
+  let connections = 0;
+  const rogue = net.createServer((socket) => {
+    connections += 1;
+    socket.on('error', () => {});
+  });
+  await new Promise((resolve) => rogue.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => rogue.close(resolve)));
+  const roguePort = rogue.address().port;
+
+  const expected = { error: 'validation', fields: { password: 'required' } };
+  for (const change of [{ host: 'localhost' }, { rconPort: roguePort }, { host: 'localhost', rconPort: roguePort, name: 'x' }]) {
+    for (const password of [undefined, '', null]) {
+      const res = await call('PUT', `/api/servers/${id}`, { ...change, password });
+      assert.equal(res.statusCode, 400, JSON.stringify([change, password]));
+      assert.deepEqual(res.json(), expected);
+    }
+  }
+  assert.deepEqual((await call('GET', `/api/servers/${id}`)).json(), before, 'record unchanged');
+  assert.deepEqual(services.servers.credentials(id), {
+    host: '127.0.0.1',
+    rcon_port: saved.rconPort,
+    password: 'goodpw',
+  });
+
+  // The manager still talks to the saved server only.
+  assert.match(await services.manager.get(id).exec('list'), /players online/);
+  assert.deepEqual(saved.received, ['list']);
+  assert.equal(connections, 0, 'the other address never got a connection');
+
+  // Moving the server with a freshly typed password is fine.
+  const moved = await call('PUT', `/api/servers/${id}`, { rconPort: roguePort, password: 'newpw123' });
+  assert.equal(moved.statusCode, 200);
+  assert.equal(moved.json().rconPort, roguePort);
+  assert.equal(services.servers.credentials(id).password, 'newpw123');
+
+  // Edits that keep the address need no password and keep the stored one.
+  const cosmetic = await call('PUT', `/api/servers/${id}`, { name: 'Cosmetic', icon: 'fire', color: 'amber' });
+  assert.equal(cosmetic.statusCode, 200);
+  assert.equal(services.servers.credentials(id).password, 'newpw123');
 });
 
 test('update and delete invalidate the cached connection', async (t) => {
@@ -356,4 +407,22 @@ test('connection test applies the same length caps as create', async (t) => {
   });
   assert.equal(res.statusCode, 400);
   assert.deepEqual(res.json(), { error: 'validation', fields: { host: 'too_long', password: 'too_long' } });
+});
+
+test('connection test with the stored password connects to the saved address', async (t) => {
+  const { call } = await setup(t);
+  const saved = await startFakeMinecraft({ password: 'goodpw' });
+  t.after(() => saved.close());
+  const { id } = (
+    await call('POST', '/api/servers', valid({ host: 'localhost', rconPort: saved.rconPort, password: 'goodpw' }))
+  ).json();
+
+  const variant = await call('POST', '/api/servers/test', { id, host: 'LOCALHOST', rconPort: saved.rconPort });
+  assert.equal(variant.json().ok, true, 'case variant of the saved host is the saved host');
+  assert.deepEqual(saved.received, ['list']);
+
+  const other = await call('POST', '/api/servers/test', { id, host: '127.0.0.2', rconPort: saved.rconPort, password: '' });
+  assert.equal(other.statusCode, 400);
+  assert.deepEqual(other.json(), { error: 'validation', fields: { password: 'required' } });
+  assert.deepEqual(saved.received, ['list'], 'nothing else was sent');
 });

@@ -60,7 +60,7 @@ export function registerServerRoutes(app) {
     const host = checkString(fields, 'host', body.host ?? '', MAX_HOST);
     const port = body.rconPort ?? DEFAULT_RCON_PORT;
     if (!Number.isInteger(port) || port < 1 || port > 65535) fields.rconPort = 'invalid';
-    let password = checkPassword(fields, body.password);
+    const password = checkPassword(fields, body.password);
     if (Object.keys(fields).length > 0) return validation(reply, fields);
 
     if (id !== null && !svc().get(id)) return notFound(reply);
@@ -71,7 +71,8 @@ export function registerServerRoutes(app) {
       const sameTarget =
         stored && stored.host.toLowerCase() === host.toLowerCase() && stored.rcon_port === port;
       if (!sameTarget) return validation(reply, { password: 'required' });
-      password = stored.password;
+      // Connect to the saved address itself, not to the submitted spelling of it.
+      return probe({ host: stored.host, port: stored.rcon_port, password: stored.password }, request.log);
     }
 
     return probe({ host, port, password }, request.log);

@@ -74,8 +74,22 @@ export function validateServerInput(input, current = null) {
   const password = checkPassword(fields, body.password);
   if (password !== null) value.password = password;
   else if (!current && !fields.password) fields.password = 'required';
+  // The saved password must not follow the server to another address: moving
+  // host or RCON port needs the password to be typed again.
+  if (current && password === null && !fields.password && targetChanged(current, value)) {
+    fields.password = 'required';
+  }
 
   return { fields, value };
+}
+
+// True when `next` points at another RCON address than `current` (host compared
+// case-insensitively). Fields that failed validation are ignored: they are
+// reported on their own.
+function targetChanged(current, next) {
+  const hostChanged = typeof next.host === 'string' && next.host.toLowerCase() !== current.host.toLowerCase();
+  const portChanged = next.rconPort !== undefined && next.rconPort !== current.rconPort;
+  return hostChanged || portChanged;
 }
 
 // Returns the password, or null when it is absent/empty (no error recorded) or
