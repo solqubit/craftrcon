@@ -7,6 +7,7 @@ import { registerConsoleRoutes } from './routes/console.js';
 import { registerLiveRoutes } from './routes/live.js';
 import { registerInfoRoutes } from './routes/info.js';
 import { registerHeadRoutes } from './routes/heads.js';
+import { registerTaskRoutes } from './routes/tasks.js';
 
 // Builds the Fastify instance without listening. Later tasks register their
 // hooks and routes here. `db` may be null and `services` may be {} in tests
@@ -25,6 +26,7 @@ export function buildApp({ config, db, services }) {
   registerLiveRoutes(app);
   registerInfoRoutes(app);
   registerHeadRoutes(app);
+  registerTaskRoutes(app);
 
   app.get('/api/health', { config: PUBLIC }, async () => ({ ok: true, version: config.version }));
 

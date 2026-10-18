@@ -13,6 +13,7 @@ import { createCommands } from './services/commands.js';
 import { createStatus } from './services/status.js';
 import { createSampler } from './services/sampler.js';
 import { createHeads } from './services/heads.js';
+import { createScheduler } from './services/scheduler.js';
 import { ConnectionManager } from './minecraft/connection.js';
 
 const config = loadConfig();
@@ -45,12 +46,15 @@ const app = buildApp({
 });
 const sampler = createSampler({ db, servers, status, hub, log: app.log });
 app.services.sampler = sampler;
+const scheduler = createScheduler({ db, commands, audit, log: app.log });
+app.services.scheduler = scheduler;
 
 let shuttingDown = false;
 async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   sampler.stop();
+  scheduler.stop();
   manager.closeAll();
   try {
     await app.close();
@@ -71,3 +75,4 @@ try {
   process.exit(1);
 }
 sampler.start();
+scheduler.start();

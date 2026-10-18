@@ -14,6 +14,7 @@ import { createCommands } from '../src/services/commands.js';
 import { createStatus } from '../src/services/status.js';
 import { createSampler } from '../src/services/sampler.js';
 import { createHeads } from '../src/services/heads.js';
+import { createScheduler } from '../src/services/scheduler.js';
 import { ConnectionManager } from '../src/minecraft/connection.js';
 
 const noNetwork = async () => {
@@ -29,7 +30,7 @@ export const TEST_ORIGIN = `http://${TEST_HOST}`;
 // Pass `password: null` to leave the admin password unset. Skin heads use a
 // throwaway cache path (created on demand) and `headsFetch`, which defaults to
 // a failing fetch so tests never reach the real network.
-export async function makeApp({ password = 'correct-horse-battery', config = {}, services: extra = {}, headsFetch = noNetwork } = {}) {
+export async function makeApp({ password = 'correct-horse-battery', config = {}, services: extra = {}, headsFetch = noNetwork, schedulerOptions = {} } = {}) {
   const db = openDb(':memory:');
   const settings = createSettings(db);
   if (password) settings.set('admin_password_hash', await hashPassword(password));
@@ -53,6 +54,7 @@ export async function makeApp({ password = 'correct-horse-battery', config = {},
       dir: join(tmpdir(), `craftrcon-test-heads-${randomBytes(6).toString('hex')}`),
       fetchImpl: headsFetch,
     }),
+    scheduler: createScheduler({ db, commands, audit, ...schedulerOptions }),
     ...extra,
   };
   const app = buildApp({ config: { ...loadConfig({}), ...config }, db, services });
