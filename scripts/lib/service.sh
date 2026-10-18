@@ -14,6 +14,7 @@ CADDY_BIN="$OPT_DIR/caddy"
 CADDY_DATA="$DATA_DIR/caddy"
 PROXY_SVC=craftrcon-proxy
 LOG_FILE=/var/log/craftrcon.log
+PROXY_LOG_FILE=/var/log/craftrcon-proxy.log
 SERVICE_ROOT="${SERVICE_ROOT:-}"
 CADDY_RELEASES_API="${CADDY_RELEASES_API:-https://api.github.com/repos/caddyserver/caddy/releases/latest}"
 CADDY_DOWNLOAD_BASE="${CADDY_DOWNLOAD_BASE:-https://github.com/caddyserver/caddy/releases}"
@@ -100,6 +101,14 @@ write_service() {
   _write_unit "$SVC" \
     "NODE_BIN=$NODE_BIN" "APP_DIR=$APP_DIR" "CONFIG_FILE=$CONFIG_FILE" \
     "DATA_DIR=$DATA_DIR" "SVC_USER=$SVC_USER" "LOG_FILE=$LOG_FILE"
+}
+
+# write_proxy_service: the Caddy proxy's systemd unit or OpenRC script (needs the Caddy
+# files from setup_caddy; also used by the repair option).
+write_proxy_service() {
+  _write_unit "$PROXY_SVC" \
+    "CADDY_BIN=$CADDY_BIN" "CADDYFILE=$CADDYFILE" "CADDY_DATA=$CADDY_DATA" \
+    "SVC_USER=$SVC_USER" "LOG_FILE=$PROXY_LOG_FILE"
 }
 
 # service_start/stop/enable/disable [NAME]: NAME defaults to the panel service.
@@ -221,6 +230,37 @@ open_firewall() {
   if [ "${#_added[@]}" -gt 0 ]; then ok FW_OPENED "${_added[*]}" "$FW_TOOL"; fi
 }
 
+# firewall_close_cmds TOOL PORT: prints, on one line, the commands that close PORT in TOOL.
+firewall_close_cmds() {
+  case "$1" in
+    ufw) echo "ufw delete allow $2/tcp" ;;
+    firewalld) echo "firewall-cmd --permanent --remove-port=$2/tcp; firewall-cmd --reload" ;;
+  esac
+}
+
+# firewall_close_rule TOOL PORT: removes a rule open_firewall added (uninstall, R3). Closing
+# a rule that no longer exists succeeds. Returns 1 when the tool cannot do it right now.
+firewall_close_rule() {
+  local _tool="$1" _port="$2"
+  case "$_tool" in
+    ufw)
+      command -v ufw >/dev/null 2>&1 || return 1
+      LC_ALL=C ufw delete allow "$_port/tcp" >/dev/null
+      ;;
+    firewalld)
+      if command -v firewall-cmd >/dev/null 2>&1 && [ "$(firewall-cmd --state 2>/dev/null || true)" = running ]; then
+        firewall-cmd --remove-port="$_port/tcp" >/dev/null 2>&1 || true # the running config
+        firewall-cmd --permanent --remove-port="$_port/tcp" >/dev/null # (its status is the result)
+      elif command -v firewall-offline-cmd >/dev/null 2>&1; then
+        firewall-offline-cmd --remove-port="$_port/tcp" >/dev/null
+      else
+        return 1
+      fi
+      ;;
+    *) return 1 ;;
+  esac
+}
+
 # -------------------------------------------------------------------- caddy --
 
 # caddy_arch: Caddy's name for the CPU architecture.
@@ -280,9 +320,7 @@ setup_caddy() {
   render_template "$TEMPLATE_DIR/Caddyfile.tmpl" "$CADDYFILE" "DOMAIN=$_domain" "PORT=$_port"
   chown root:"$SVC_USER" "$CADDYFILE"
   chmod 0640 "$CADDYFILE"
-  _write_unit "$PROXY_SVC" \
-    "CADDY_BIN=$CADDY_BIN" "CADDYFILE=$CADDYFILE" "CADDY_DATA=$CADDY_DATA" \
-    "SVC_USER=$SVC_USER" "LOG_FILE=/var/log/$PROXY_SVC.log"
+  write_proxy_service
 }
 
 # --------------------------------------------------------------------- urls --

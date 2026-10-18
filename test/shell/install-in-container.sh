@@ -155,4 +155,87 @@ assert_eq "755" "$(in_ct 'stat -c %a /opt/craftrcon/node')" "node dir permission
 assert_contains "v" "$(node_as_service_user)" "the service user can run the private Node again"
 assert_eq "204" "$(login repairpass1)" "login with the new password -> 204"
 
+echo "== $distro: existing install: menu"
+# Interactive runs (no --non-interactive): the answers come on stdin. The panel is still
+# running from the previous step, so --no-service only matters for the repair option.
+out="$(printf 'x\n4\n' | docker exec -i "$name" ./install.sh 2>&1)"
+assert_eq "0" "$?" "menu: exits 0"
+assert_contains "Installed version: $version. This copy: $version." "$out" "menu: shows both versions"
+assert_contains "What do you want to do?" "$out" "menu: is shown"
+assert_contains "Invalid choice: x" "$out" "menu: an invalid choice asks again"
+case "$out" in *"Run ./update.sh now?"*) r=offered ;; *) r=quiet ;; esac
+assert_eq "quiet" "$r" "menu: no update offer when the copy is not newer"
+assert_eq "204" "$(login repairpass1)" "menu: choosing 4 changed nothing"
+
+echo "== $distro: change the password"
+out="$(install_ct newpass456 --reset-password --non-interactive 2>&1)"
+rc=$?
+assert_eq "0" "$rc" "--reset-password exits 0"
+if [ "$rc" -ne 0 ]; then printf '%s\n' "$out" | tail -n 20; fi
+assert_contains "password was changed" "$out" "--reset-password confirms"
+case "$out" in *newpass456*) r=leaked ;; *) r=hidden ;; esac
+assert_eq "hidden" "$r" "--reset-password never prints the password"
+assert_eq "204" "$(login newpass456)" "login with the new password -> 204"
+assert_eq "401" "$(login repairpass1)" "login with the old password -> 401"
+out="$(install_ct short1 --reset-password --non-interactive 2>&1)"
+assert_eq "1" "$?" "--reset-password with a short password exits 1"
+assert_contains "at least 8 characters" "$out" "--reset-password explains the minimum length"
+assert_eq "204" "$(login newpass456)" "a rejected password changes nothing"
+out="$(printf '1\nmenupass789\nmenupass789\n' | docker exec -i "$name" ./install.sh 2>&1)"
+assert_eq "0" "$?" "menu option 1 exits 0"
+assert_eq "204" "$(login menupass789)" "menu option 1: login with the password typed in the menu -> 204"
+assert_eq "401" "$(login newpass456)" "menu option 1: the previous password stops working"
+
+echo "== $distro: repair"
+kill_panel
+assert_eq "000" "$(in_ct "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:$PORT/api/health || true")" "the panel is stopped"
+out="$(printf '2\n' | docker exec -i "$name" ./install.sh --no-service 2>&1)"
+rc=$?
+assert_eq "0" "$rc" "repair exits 0"
+if [ "$rc" -ne 0 ]; then printf '%s\n' "$out" | tail -n 20; fi
+assert_contains "Service repaired" "$out" "repair confirms"
+assert_contains '"ok":true' "$(in_ct "curl -fsS http://127.0.0.1:$PORT/api/health")" "repair: the panel answers again"
+assert_eq "204" "$(login menupass789)" "repair keeps the password"
+out="$(printf '2\n' | docker exec -i "$name" ./install.sh --no-service 2>&1)"
+assert_eq "0" "$?" "repairing a panel that is running exits 0"
+assert_eq "1" "$(in_ct 'n=0; for p in /proc/[0-9]*; do a0="$(tr "\0" "\n" <"$p/cmdline" 2>/dev/null | head -n 1)"; [ "$a0" = /opt/craftrcon/node/bin/node ] && n=$((n + 1)); done; echo $n')" "repair leaves exactly one panel process"
+
+echo "== $distro: uninstall (keeps the data)"
+in_ct 'echo mine >/var/lib/craftrcon/marker'
+out="$(docker exec "$name" ./install.sh --uninstall --non-interactive 2>&1)"
+rc=$?
+assert_eq "0" "$rc" "--uninstall exits 0"
+if [ "$rc" -ne 0 ]; then printf '%s\n' "$out" | tail -n 20; fi
+assert_contains "CraftRCON was uninstalled." "$out" "--uninstall confirms"
+assert_contains "Removed:" "$out" "--uninstall lists what it removed"
+assert_contains "Kept:" "$out" "--uninstall lists what it kept"
+assert_eq "absent|absent" "$(in_ct 'test -e /opt/craftrcon && echo present || echo absent')|$(in_ct 'test -e /etc/craftrcon && echo present || echo absent')" "/opt/craftrcon and /etc/craftrcon are gone"
+assert_eq "present|present" "$(in_ct 'test -f /var/lib/craftrcon/craftrcon.db && echo present || echo absent')|$(in_ct 'test -f /var/lib/craftrcon/marker && echo present || echo absent')" "the data is kept by default"
+assert_eq "ok" "$(in_ct 'id craftrcon >/dev/null 2>&1 && echo ok || echo missing')" "the service user is kept with the data"
+assert_eq "000" "$(in_ct "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:$PORT/api/health || true")" "the panel is stopped"
+assert_eq "none" "$(in_ct 'for p in /proc/[0-9]*; do a0="$(tr "\0" "\n" <"$p/cmdline" 2>/dev/null | head -n 1)"; [ "$a0" = /opt/craftrcon/node/bin/node ] && echo "$p"; done; echo none' | tail -n 1)" "no panel process is left"
+out="$(docker exec "$name" ./install.sh --uninstall --non-interactive 2>&1)"
+assert_eq "0" "$?" "uninstalling again exits 0"
+assert_contains "not installed" "$out" "uninstalling again says there is nothing to remove"
+out="$(install_ct x --reset-password --non-interactive 2>&1)"
+assert_eq "1" "$?" "--reset-password when not installed exits 1"
+assert_contains "sudo ./install.sh" "$out" "--reset-password when not installed points to the installer"
+
+echo "== $distro: install again over the kept data, then uninstall --purge"
+start=$SECONDS
+install_ct again12345 --non-interactive --no-service >"$logfile" 2>&1
+rc=$?
+echo "   (reinstall took $((SECONDS - start)) s)"
+assert_eq "0" "$rc" "reinstall exits 0"
+if [ "$rc" -ne 0 ]; then tail -n 30 "$logfile"; fi
+assert_eq "204" "$(login again12345)" "reinstall: login with the new password -> 204"
+assert_eq "present" "$(in_ct 'test -f /var/lib/craftrcon/marker && echo present || echo absent')" "reinstall: the kept data is still there"
+out="$(docker exec "$name" ./install.sh --uninstall --purge --non-interactive 2>&1)"
+rc=$?
+assert_eq "0" "$rc" "--uninstall --purge exits 0"
+if [ "$rc" -ne 0 ]; then printf '%s\n' "$out" | tail -n 20; fi
+assert_eq "absent|absent|absent" "$(in_ct 'test -e /opt/craftrcon && echo present || echo absent')|$(in_ct 'test -e /etc/craftrcon && echo present || echo absent')|$(in_ct 'test -e /var/lib/craftrcon && echo present || echo absent')" "--purge removes the app, the configuration and the data"
+assert_eq "missing|missing" "$(in_ct 'id craftrcon >/dev/null 2>&1 && echo ok || echo missing')|$(in_ct 'getent group craftrcon >/dev/null 2>&1 && echo ok || echo missing')" "--purge removes the service user and its group"
+assert_eq "000" "$(in_ct "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:$PORT/api/health || true")" "the panel is stopped"
+
 finish

@@ -279,6 +279,29 @@ installed_version() {
   ' "$INSTALLED_FILE"
 }
 
+# installed_port: prints the top-level "port" of installed.json (nothing if absent). The
+# firewall entries also have a "port", so that array is cut out first.
+installed_port() {
+  is_installed || return 0
+  tr -d '\r\n' <"$INSTALLED_FILE" |
+    sed 's/"firewall"[[:space:]]*:[[:space:]]*\[[^]]*\]//' |
+    sed -n 's/.*"port"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p'
+}
+
+# installed_firewall: prints one "tool:port" line for every rule in the "firewall" array
+# of installed.json (R3: the rules the installer opened). Nothing if there are none.
+installed_firewall() {
+  local _arr _obj _tool _port
+  is_installed || return 0
+  _arr="$(tr -d '\r\n' <"$INSTALLED_FILE" |
+    sed -n 's/.*"firewall"[[:space:]]*:[[:space:]]*\[\([^]]*\)\].*/\1/p')"
+  while IFS= read -r _obj; do
+    _tool="$(printf '%s\n' "$_obj" | sed -n 's/.*"tool"[[:space:]]*:[[:space:]]*"\([a-z]*\)".*/\1/p')"
+    _port="$(printf '%s\n' "$_obj" | sed -n 's/.*"port"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p')"
+    if [ -n "$_tool" ] && [ -n "$_port" ]; then printf '%s:%s\n' "$_tool" "$_port"; fi
+  done < <(printf '%s\n' "$_arr" | tr '}' '\n')
+}
+
 # ------------------------------------------------------------------- input --
 
 _check_varname() {

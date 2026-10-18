@@ -4,6 +4,10 @@
 # Phase 1 (no system changes): options, checks, questions, download sources.
 # Phase 2 (changes): packages, Node, user, app, dependencies, config, service, firewall,
 # start + health check. On failure it lists what was already done and how to go on.
+#
+# On a machine where CraftRCON is already installed it does not reinstall: it shows the
+# versions and a menu (change the password, repair the service, uninstall), or runs the
+# --reset-password / --uninstall shortcuts (section "existing installation" below).
 set -Eeuo pipefail
 
 FLOW_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,6 +27,9 @@ TOTAL_STEPS=9
 OPT_NONINTERACTIVE=0
 OPT_NO_SERVICE=0
 OPT_YES=0
+OPT_RESET_PASSWORD=0
+OPT_UNINSTALL=0
+OPT_PURGE=0
 PASSWORD=''
 PORT=''
 DOMAIN=''
@@ -76,6 +83,9 @@ parse_args() {
       --non-interactive) OPT_NONINTERACTIVE=1 && shift ;;
       --no-service) OPT_NO_SERVICE=1 && shift ;;
       -y | --yes) OPT_YES=1 && shift ;;
+      --reset-password) OPT_RESET_PASSWORD=1 && shift ;;
+      --uninstall) OPT_UNINSTALL=1 && shift ;;
+      --purge) OPT_PURGE=1 && shift ;;
       -h | --help)
         usage
         exit 0
@@ -84,6 +94,10 @@ parse_args() {
     esac
   done
   NONINTERACTIVE="$OPT_NONINTERACTIVE"
+  if [ "$OPT_RESET_PASSWORD" = 1 ] && [ "$OPT_UNINSTALL" = 1 ]; then
+    usage_error ERR_OPTION_CONFLICT --reset-password --uninstall
+  fi
+  if [ "$OPT_PURGE" = 1 ] && [ "$OPT_UNINSTALL" != 1 ]; then usage_error ERR_PURGE_ALONE; fi
 }
 
 # -------------------------------------------------------------- validation --
@@ -165,13 +179,6 @@ source_commit() {
 }
 
 # -------------------------------------------------------------- phase 1: checks --
-
-already_installed() {
-  local _v
-  _v="$(installed_version)"
-  info ALREADY_INSTALLED "${_v:-?}" "$OPT_DIR"
-  info ALREADY_INSTALLED_HINT
-}
 
 check_source() {
   local _f _real_src _real_opt
@@ -678,14 +685,332 @@ show_result() {
   fi
 }
 
+# ------------------------------------------------------ existing installation --
+# Reached when installed.json exists. Showing the versions never needs root; changing
+# anything does.
+
+# read_source_version: SOURCE_VERSION of this copy, or '' when VERSION is missing/invalid
+# (the menu then simply does not compare; check_source is the strict check for installs).
+read_source_version() {
+  local _v=''
+  SOURCE_VERSION=''
+  if [ -r "$SRC_DIR/VERSION" ]; then _v="$(tr -d '[:space:]' <"$SRC_DIR/VERSION")"; fi
+  if [[ "$_v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then SOURCE_VERSION="$_v"; fi
+}
+
+# show_versions: prints both versions; sets INSTALLED_VERSION and COPY_CMP (1 when this
+# copy is newer than the installed version, -1 older, 0 equal, '' when either is unknown).
+show_versions() {
+  INSTALLED_VERSION="$(installed_version)"
+  read_source_version
+  COPY_CMP=''
+  if [ -n "$INSTALLED_VERSION" ] && [ -n "$SOURCE_VERSION" ]; then
+    COPY_CMP="$(version_cmp "$SOURCE_VERSION" "$INSTALLED_VERSION" 2>/dev/null || true)"
+  fi
+  info EXISTING_VERSIONS "${INSTALLED_VERSION:-?}" "${SOURCE_VERSION:-?}"
+}
+
+# offer_update: this copy is newer. Offers ./update.sh; on yes it replaces this process
+# with the update flow (same language). Until update-flow.sh exists it says so and returns.
+offer_update() {
+  local answer update="$FLOW_DIR/update-flow.sh"
+  info COPY_NEWER "$SOURCE_VERSION" "$INSTALLED_VERSION"
+  ask Q_RUN_UPDATE y answer
+  is_yes "$answer" || return 0
+  if [ -f "$update" ]; then
+    exec bash "$update" --lang "$CRAFTRCON_LANG"
+  fi
+  warn UPDATE_NOT_AVAILABLE
+}
+
+# locate_node: NODE_BIN of the installed panel (the private Node, else the system one on
+# Alpine) and a check that the application is there.
+locate_node() {
+  if [ -x "$NODE_DIR/bin/node" ]; then
+    NODE_BIN="$NODE_DIR/bin/node"
+  else
+    NODE_BIN="$(command -v node || true)"
+  fi
+  if [ -z "$NODE_BIN" ] || [ ! -x "$NODE_BIN" ]; then die ERR_NODE_MISSING "$NODE_DIR/bin/node"; fi
+  [ -f "$APP_DIR/src/cli.js" ] || die ERR_APP_MISSING "$APP_DIR"
+  export NODE_BIN
+}
+
+# panel_port: the port the panel listens on (config.json, else installed.json).
+panel_port() {
+  local _p=''
+  if [ -r "$CONFIG_FILE" ]; then
+    _p="$(sed -n 's/.*"port"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$CONFIG_FILE")"
+  fi
+  [ -n "$_p" ] || _p="$(installed_port)"
+  echo "${_p:-$DEFAULT_PORT}"
+}
+
+# panel_pids: pids of a panel started without a service (node ... APP_DIR/src/server.js).
+panel_pids() {
+  local _p _args
+  for _p in /proc/[0-9]*; do
+    [ -r "$_p/cmdline" ] || continue
+    _args="$(tr '\0' ' ' <"$_p/cmdline" 2>/dev/null || true)"
+    # argv[0] must be node itself: the runuser/su wrappers also carry the script path.
+    case "${_args%% *}" in
+      node | */node)
+        case "$_args" in *" $APP_DIR/src/server.js "*) echo "${_p#/proc/}" ;; esac
+        ;;
+    esac
+  done
+}
+
+# stop_background_panel: ends a panel that runs without a service (--no-service installs).
+# Returns 1 when there was none.
+stop_background_panel() {
+  local _pids _pid _i
+  _pids="$(panel_pids)"
+  [ -n "$_pids" ] || return 1
+  for _pid in $_pids; do kill "$_pid" 2>/dev/null || true; done
+  for ((_i = 0; _i < 20; _i++)); do
+    [ -n "$(panel_pids)" ] || return 0
+    sleep 0.5
+  done
+  for _pid in $(panel_pids); do kill -9 "$_pid" 2>/dev/null || true; done
+  return 0
+}
+
+# ---- 1) change the password
+
+action_reset_password() {
+  local _rc=0
+  require_root ./install.sh
+  locate_node
+  init_run_as
+  ask_password
+  # Same path as the install: the password only travels through a pipe, never in argv.
+  printf '%s\n' "$PASSWORD" | run_cli set-password || _rc=$?
+  PASSWORD=''
+  case "$_rc" in
+    0) ;;
+    2) die ERR_PASSWORD_REJECTED "$MIN_PASSWORD_LENGTH" ;;
+    *) die ERR_SET_PASSWORD ;;
+  esac
+  # No restart: set-password already deleted every session in the database.
+  ok PASSWORD_CHANGED
+}
+
+# ---- 2) repair the service
+
+action_repair() {
+  local _port _logs
+  require_root ./install.sh
+  detect_os
+  locate_node
+  init_run_as
+  _port="$(panel_port)"
+  info REPAIR_START
+  if [ "$OPT_NO_SERVICE" = 1 ]; then
+    # Containers without init: there is no service to recreate, restart the process.
+    info REPAIR_BACKGROUND
+    stop_background_panel || true
+    start_background
+    _logs="tail -n 50 $LOG_FILE"
+  else
+    if [ "$INIT" != systemd ] && [ "$INIT" != openrc ]; then die ERR_NO_INIT; fi
+    write_service
+    service_enable
+    service_start
+    _logs="$(service_logs_hint)"
+    if [ -x "$CADDY_BIN" ] && [ -f "$CADDYFILE" ]; then # installed with a domain
+      write_proxy_service
+      service_enable "$PROXY_SVC"
+      service_start "$PROXY_SVC"
+    fi
+  fi
+  wait_health "http://127.0.0.1:$_port/api/health" "$HEALTH_TIMEOUT" ||
+    die ERR_HEALTH "$_port" "$HEALTH_TIMEOUT" "$_logs"
+  ok REPAIR_DONE "$_port"
+}
+
+# ---- 3) uninstall
+
+REMOVED=()
+KEPT=()
+
+# remove_unit NAME: stops, disables and deletes the init script of NAME. Returns 1 when
+# there was none (no service manager, or the service was never created).
+remove_unit() {
+  local _path
+  case "${INIT:-}" in
+    systemd | openrc) ;;
+    *) return 1 ;;
+  esac
+  _path="$(_svc_path "$1")"
+  [ -e "$_path" ] || return 1
+  service_stop "$1" || warn SVC_STOP_FAILED "$1"
+  service_disable "$1" >/dev/null 2>&1 || true
+  rm -f "$_path"
+}
+
+# delete_service_user: removes the craftrcon user (and its group). The tools' exit codes
+# are not trusted (userdel returns 12 for a missing mail spool after removing the user).
+delete_service_user() {
+  id -u "$SVC_USER" >/dev/null 2>&1 || return 1
+  if command -v userdel >/dev/null 2>&1; then
+    userdel "$SVC_USER" >/dev/null 2>&1 || true
+    if getent group "$SVC_USER" >/dev/null 2>&1; then groupdel "$SVC_USER" >/dev/null 2>&1 || true; fi
+  elif command -v deluser >/dev/null 2>&1; then # Alpine / busybox
+    deluser "$SVC_USER" >/dev/null 2>&1 || true
+    if getent group "$SVC_USER" >/dev/null 2>&1; then delgroup "$SVC_USER" >/dev/null 2>&1 || true; fi
+  fi
+  ! id -u "$SVC_USER" >/dev/null 2>&1
+}
+
+on_uninstall_exit() {
+  local _rc=$?
+  trap - ERR
+  if [ "$_rc" -ne 0 ]; then warn UNINSTALL_FAILED; fi
+  exit "$_rc"
+}
+
+print_uninstall_summary() {
+  local _i
+  printf '\n%s%s%s\n' "$C_GREEN$C_BOLD" "$(msg UNINSTALL_DONE)" "$C_RESET"
+  printf '%s\n' "$(msg REMOVED_HEADER)"
+  for _i in "${REMOVED[@]}"; do printf '  - %s\n' "$_i"; done
+  printf '%s\n' "$(msg KEPT_HEADER)"
+  for _i in "${KEPT[@]}"; do printf '  - %s\n' "$_i"; done
+}
+
+action_uninstall() {
+  local fw=() purge=0 answer _e _tool _port _name
+  REMOVED=()
+  KEPT=()
+  require_root ./install.sh
+  detect_os
+  # The firewall rules are listed in installed.json, which goes away with /opt/craftrcon.
+  mapfile -t fw < <(installed_firewall)
+
+  # Every question comes before the first change.
+  if [ "$NONINTERACTIVE" != 1 ] && [ "$OPT_YES" != 1 ]; then
+    ask Q_UNINSTALL_CONFIRM n answer
+    if ! is_yes "$answer"; then
+      info UNINSTALL_ABORTED
+      return 0
+    fi
+  fi
+  if [ "$OPT_PURGE" = 1 ]; then
+    purge=1
+  elif [ "$NONINTERACTIVE" != 1 ]; then
+    ask Q_DELETE_DATA n answer
+    if is_yes "$answer"; then purge=1; fi
+  fi
+
+  # installed.json is deleted last: until then a failed run can simply be repeated.
+  trap on_uninstall_exit EXIT
+  info UNINSTALL_STOPPING
+  for _name in "$PROXY_SVC" "$SVC"; do # the proxy first: it forwards to the panel
+    if remove_unit "$_name"; then REMOVED+=("$(msg RM_SERVICE "$_name")"); fi
+  done
+  if [ "$INIT" = systemd ] && [ -z "$SERVICE_ROOT" ]; then systemctl daemon-reload; fi
+  # Always: a panel started with --no-service (or by hand) would keep running its deleted files.
+  if stop_background_panel; then
+    info BACKGROUND_STOPPED
+    REMOVED+=("$(msg RM_BACKGROUND)")
+  fi
+
+  for _e in ${fw[@]+"${fw[@]}"}; do
+    _tool="${_e%%:*}"
+    _port="${_e#*:}"
+    if firewall_close_rule "$_tool" "$_port"; then
+      ok FW_CLOSED "$_port" "$_tool"
+      REMOVED+=("$(msg RM_FIREWALL "$_port" "$_tool")")
+    else
+      warn FW_CLOSE_FAILED "$_port" "$_tool" "$(firewall_close_cmds "$_tool" "$_port")"
+    fi
+  done
+
+  info UNINSTALL_FILES
+  rm -rf "$CONF_DIR"
+  REMOVED+=("$(msg RM_CONFIG "$CONF_DIR")")
+  rm -f "$LOG_FILE" "$PROXY_LOG_FILE"
+  REMOVED+=("$(msg RM_LOGS)")
+  if [ "$purge" = 1 ]; then
+    rm -rf "$DATA_DIR"
+    REMOVED+=("$(msg RM_DATA "$DATA_DIR")")
+    if delete_service_user; then REMOVED+=("$(msg RM_USER "$SVC_USER")"); fi
+  else
+    if [ -e "$DATA_DIR" ]; then KEPT+=("$(msg KEPT_DATA "$DATA_DIR" "$DATA_DIR")"); fi
+    if id -u "$SVC_USER" >/dev/null 2>&1; then KEPT+=("$(msg KEPT_USER "$SVC_USER")"); fi
+  fi
+  rm -rf "$OPT_DIR"
+  REMOVED+=("$(msg RM_APP "$OPT_DIR")")
+  KEPT+=("$(msg KEPT_PACKAGES)")
+  print_uninstall_summary
+}
+
+# ---- entry
+
+existing_menu() {
+  local choice _try
+  for ((_try = 0; _try < MAX_TRIES; _try++)); do
+    echo
+    printf '%s%s%s\n' "$C_BOLD" "$(msg MENU_TITLE)" "$C_RESET"
+    printf '  %s\n' "$(msg MENU_RESET)" "$(msg MENU_REPAIR)" "$(msg MENU_UNINSTALL)" "$(msg MENU_QUIT)"
+    ask Q_MENU_CHOICE 4 choice # empty answer or end of input -> 4 (exit)
+    case "$choice" in
+      1)
+        action_reset_password
+        return 0
+        ;;
+      2)
+        action_repair
+        return 0
+        ;;
+      3)
+        action_uninstall
+        return 0
+        ;;
+      4) return 0 ;;
+      *) warn MENU_INVALID "$choice" ;;
+    esac
+  done
+  die ERR_TOO_MANY_TRIES
+}
+
+# run_existing: CraftRCON is installed; do what was asked (a shortcut flag, or the menu).
+run_existing() {
+  trap 'on_error "$LINENO" "$BASH_COMMAND"' ERR
+  if [ "$OPT_UNINSTALL" = 1 ]; then
+    action_uninstall
+    return 0
+  fi
+  if [ "$OPT_RESET_PASSWORD" = 1 ]; then
+    action_reset_password
+    return 0
+  fi
+  show_versions
+  if [ "$NONINTERACTIVE" = 1 ]; then
+    if [ "$COPY_CMP" = 1 ]; then info COPY_NEWER "$SOURCE_VERSION" "$INSTALLED_VERSION"; fi
+    info ALREADY_INSTALLED "${INSTALLED_VERSION:-?}" "$OPT_DIR"
+    info ALREADY_INSTALLED_HINT
+    return 0
+  fi
+  require_root ./install.sh
+  if [ "$COPY_CMP" = 1 ]; then offer_update; fi
+  existing_menu
+}
+
 # --------------------------------------------------------------------- main --
 
 main() {
   parse_args "$@"
   if is_installed; then
-    already_installed
+    run_existing
     exit 0
   fi
+  if [ "$OPT_UNINSTALL" = 1 ]; then
+    info NOT_INSTALLED_UNINSTALL
+    exit 0
+  fi
+  if [ "$OPT_RESET_PASSWORD" = 1 ]; then die ERR_NOT_INSTALLED; fi
   check_system
   ask_password
   ask_port
