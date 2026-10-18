@@ -479,23 +479,56 @@ rb_say() {
 rb_run() { ("$@") >>"${UPDATE_LOG:-/dev/null}" 2>&1; }
 
 MANUAL_N=0
+MANUAL_PROXY_STOPPED=0 # manual_db_steps told the user to stop the proxy
 manual_step() { # manual_step KEY ARGS...: one numbered recovery step
   MANUAL_N=$((MANUAL_N + 1))
   rb_say '' "  $MANUAL_N. $(msg "$@")"
 }
 
+# manual_db_steps: the database restore by hand (review C2c). A process of the service user
+# could plant links in its data folder, where cp writes through a link and chown follows
+# one. So every such process is ended first (the proxy runs as that user too: it is
+# stopped here and started again at the end), and each file is copied and given to the
+# service user inside a folder only root can write, then renamed into place: a rename
+# never follows a link. That folder is the backup when it is on the database's filesystem;
+# otherwise (mv would copy, not rename) a new root-only folder inside the data folder,
+# which the service user can neither rename nor empty.
+manual_db_steps() {
+  local _f _stage _procs='' _mk='' _cleanup=''
+  if [ "$OPT_NO_SERVICE" != 1 ] && proxy_installed; then
+    _procs="$(_svc_cmd stop "$PROXY_SVC"); "
+    MANUAL_PROXY_STOPPED=1
+  fi
+  _procs+="pkill -KILL -u $SVC_USER; ps -u $SVC_USER"
+  manual_step MANUAL_PROCS "$SVC_USER" "$_procs"
+  manual_step MANUAL_DB_CLEAN "rm -f $DB_DIR/craftrcon.db-wal $DB_DIR/craftrcon.db-shm"
+  _stage="$BACKUP_DIR"
+  if [ "$(stat -c %d -- "$BACKUP_DIR" 2>/dev/null)" != "$(stat -c %d -- "$DB_DIR" 2>/dev/null)" ]; then
+    _stage="$DB_DIR/.craftrcon-restore"
+    _mk="mkdir -m 0700 $_stage && "
+    _cleanup=" && rmdir $_stage"
+  fi
+  for _f in "${DB_FILES[@]}"; do
+    [ -f "$BACKUP_DIR/$_f" ] || continue
+    manual_step MANUAL_DB "$_f" "$_mk$(printf 'cp -p %s %s && chown -h %s:%s %s && mv -fT %s %s'       "$BACKUP_DIR/$_f" "$_stage/.manual-$_f" "$SVC_USER" "$SVC_USER" "$_stage/.manual-$_f" "$_stage/.manual-$_f" "$DB_DIR/$_f")$_cleanup"
+  done
+}
+
+# _svc_cmd ACTION NAME: the command line that stops or starts service NAME.
+_svc_cmd() {
+  if [ "$INIT" = openrc ]; then echo "rc-service $2 $1"; else echo "systemctl $1 $2"; fi
+}
+
 # manual_recovery PROBLEMS: the rollback did not finish; prints exactly what is left to do.
 manual_recovery() {
   local _stop _start _units='' _n
+  MANUAL_PROXY_STOPPED=0
   if [ "$OPT_NO_SERVICE" = 1 ]; then
     _stop="pkill -f $APP_DIR/src/server.js"
     _start="$(msg MANUAL_START_NO_SERVICE)"
-  elif [ "$INIT" = openrc ]; then
-    _stop="rc-service $SVC stop"
-    _start="rc-service $SVC start"
   else
-    _stop="systemctl stop $SVC"
-    _start="systemctl start $SVC"
+    _stop="$(_svc_cmd stop "$SVC")"
+    _start="$(_svc_cmd start "$SVC")"
   fi
   rb_say error "$(msg ROLLBACK_FAILED "$NEW_VERSION" "${CURRENT_STEP:-?}" "$1" "$OLD_VERSION")"
   MANUAL_N=0
@@ -510,12 +543,13 @@ manual_recovery() {
     manual_step MANUAL_UNITS "$_units"
   fi
   if [ "$BACKUP_DONE" = 1 ] && [ "$NEW_STARTED" = 1 ] && [ "$DB_RESTORED" != 1 ]; then
-    manual_step MANUAL_DB "rm -f $DB_DIR/craftrcon.db-wal $DB_DIR/craftrcon.db-shm && cp -p $BACKUP_DIR/craftrcon.db* $DB_DIR/ && chown $SVC_USER:$SVC_USER $DB_DIR/craftrcon.db*"
+    manual_db_steps
   fi
   if [ "$RECORDING" = 1 ] && [ "$INSTALLED_RESTORED" != 1 ]; then
     manual_step MANUAL_INSTALLED "cp -p $BACKUP_DIR/installed.json $INSTALLED_FILE"
   fi
   manual_step MANUAL_START "$_start"
+  if [ "$MANUAL_PROXY_STOPPED" = 1 ]; then manual_step MANUAL_START_PROXY "$(_svc_cmd start "$PROXY_SVC")"; fi
   manual_step MANUAL_CHECK "$OLD_VERSION" "curl -s $(health_url)"
 }
 

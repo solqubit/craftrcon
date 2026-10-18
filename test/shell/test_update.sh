@@ -481,8 +481,51 @@ echo 'server' >"$COPY/src/server.js"
 assert_contains "rc=1" "$out" "stop failure in the rollback: exits 1"
 assert_contains "the database was not restored because the new version could not be stopped" "$out" "says the database was left alone"
 assert_contains "$(printf 'old-db\nmigrated')" "$(cat "$SB/data/craftrcon.db")" "the database is not replaced under a running panel"
-assert_contains "Put the database back from the backup:" "$out" "the database restore is a manual step"
 assert_contains "Stop the panel: systemctl stop craftrcon" "$out" "manual step: stop first"
+# (review C2c) the printed restore never lets cp or chown touch a name in the data folder.
+bk="$(find "$SB/backups/craftrcon" -mindepth 1 -maxdepth 1 -name '*-1.4.2' | head -n 1)"
+st="$bk/.manual-craftrcon.db"
+assert_contains "Make sure no process of the service user craftrcon is left (it could tamper with the data folder meanwhile); the last command must list none: pkill -KILL -u craftrcon; ps -u craftrcon" "$out" "manual DB: end every process of the service user first"
+assert_contains "Delete the journal files the new version left: rm -f $SB/data/craftrcon.db-wal $SB/data/craftrcon.db-shm" "$out" "manual DB: remove the new journal files"
+db_cmd="cp -p $bk/craftrcon.db $st && chown -h craftrcon:craftrcon $st && mv -fT $st $SB/data/craftrcon.db"
+assert_contains "Put craftrcon.db back from the backup. It is copied and given to the service user inside a folder only root can write, then renamed into place (a rename never follows a link): $db_cmd" "$out" "manual DB: staged copy, chown -h in the backup, then a rename"
+assert_contains "Put craftrcon.db-wal back from the backup." "$out" "manual DB: one step per backed-up file"
+assert_eq "no|no" "$(case "$out" in *"$SB/data/ "* | *"cp -p $bk/craftrcon.db $SB/data"*) echo yes ;; *) echo no ;; esac)|$(printf '%s\n' "$out" | grep -E 'chown [^-]' >/dev/null && echo yes || echo no)" "manual DB: no cp into the data folder, no chown without -h"
+order="$(printf '%s\n' "$out" | grep -oE '^ +[0-9]+\. (Stop the panel|Make sure no process|Delete the journal|Put craftrcon.db back|Put craftrcon.db-wal back|Start the panel)' | sed -E 's/^ +[0-9]+\. //' | paste -sd'|' -)"
+assert_eq "Stop the panel|Make sure no process|Delete the journal|Put craftrcon.db back|Put craftrcon.db-wal back|Start the panel" "$order" "manual DB: steps in a safe order"
+# The printed commands work and do not write through a link planted at the database.
+mkdir -p "$TMP/bin-chown" && printf '#!/bin/sh\necho "$*" >>"%s"\n' "$TMP/chown.log" >"$TMP/bin-chown/chown" && chmod +x "$TMP/bin-chown/chown"
+rm -f "$TMP/chown.log"; echo 'secret' >"$TMP/victim"
+if [ "$CAN_SYMLINK" = 1 ]; then rm -f "$SB/data/craftrcon.db" && ln -s "$TMP/victim" "$SB/data/craftrcon.db"; fi
+PATH="$TMP/bin-chown:$PATH" bash -c "set -e; $db_cmd"
+assert_eq "old-db|no|secret|-h craftrcon:craftrcon $st" "$(cat "$SB/data/craftrcon.db")|$([ -L "$SB/data/craftrcon.db" ] && echo yes || echo no)|$(cat "$TMP/victim")|$(cat "$TMP/chown.log")" "manual DB: the printed command restores the file over a planted link, chown only on the staged copy"
+rm -f "$TMP/victim"
+mk_sandbox
+set_copy_version 1.5.0
+echo 'BROKEN' >"$COPY/src/server.js"
+out="$(STOP_FAIL_IN_ROLLBACK=1 sb_run '' --yes --lang es)"
+echo 'server' >"$COPY/src/server.js"
+assert_contains "Asegúrate de que no queda ningún proceso del usuario del servicio craftrcon" "$out" "manual DB (es): end the service user's processes"
+assert_contains "Devuelve craftrcon.db desde el respaldo." "$out" "manual DB (es): staged restore"
+# Backup on another filesystem: mv would copy, so the copy is staged in a new root-only
+# folder inside the data folder instead (stat stubbed: each path is its own "device").
+mkdir -p "$TMP/xfs-bk" "$TMP/xfs-db" && echo 'xfs-db' >"$TMP/xfs-bk/craftrcon.db" && echo 'new' >"$TMP/xfs-db/craftrcon.db"
+out="$(fl "BACKUP_DIR='$TMP/xfs-bk'; DB_DIR='$TMP/xfs-db'; OPT_NO_SERVICE=1; stat() { echo \"\${@: -1}\"; }; manual_db_steps" 2>&1)"
+xst="$TMP/xfs-db/.craftrcon-restore"
+xcmd="mkdir -m 0700 $xst && cp -p $TMP/xfs-bk/craftrcon.db $xst/.manual-craftrcon.db && chown -h craftrcon:craftrcon $xst/.manual-craftrcon.db && mv -fT $xst/.manual-craftrcon.db $TMP/xfs-db/craftrcon.db && rmdir $xst"
+assert_contains "$xcmd" "$out" "manual DB across filesystems: staged in a new root-only folder next to the database"
+if mkdir -m 0700 "$TMP/.mode-probe" 2>/dev/null; then # (Git Bash: mkdir -m fails on NTFS)
+  PATH="$TMP/bin-chown:$PATH" bash -c "set -e; $xcmd"
+  assert_eq "xfs-db|no" "$(cat "$TMP/xfs-db/craftrcon.db")|$(exists "$xst")" "manual DB across filesystems: the printed command restores the file and removes its folder"
+fi
+mk_sandbox
+with_proxy
+set_copy_version 1.5.0
+echo 'BROKEN' >"$COPY/src/server.js"
+out="$(STOP_FAIL_IN_ROLLBACK=1 sb_run '' --yes)"
+echo 'server' >"$COPY/src/server.js"
+assert_contains "the last command must list none: systemctl stop craftrcon-proxy; pkill -KILL -u craftrcon; ps -u craftrcon" "$out" "manual DB with a proxy: the proxy is stopped too"
+assert_contains "Start the HTTPS proxy again: systemctl start craftrcon-proxy" "$out" "manual DB with a proxy: and started again at the end"
 
 echo "sandbox: the rollback itself fails -> manual steps"
 mk_sandbox
