@@ -6,6 +6,7 @@
 # Usage: bash test/shell/install-in-container.sh <debian12|ubuntu24|rocky9|fedora>
 # Env:   KEEP=1 keeps the container and image for debugging.
 #        INSTALL_LANG=es runs the installer with --lang es.
+#        INSTALL_UMASK (default 027, as on CIS-hardened hosts) is the umask of the install.
 # shellcheck disable=SC2016 # in_ct snippets are single-quoted on purpose (they expand in the container)
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,6 +26,7 @@ tag="craftrcon-test:$distro"
 name="craftrcon-test-$distro-$$"
 logfile="${TMPDIR:-/tmp}/craftrcon-install-$distro.log"
 version="$(tr -d '[:space:]' <"$ROOT/VERSION")"
+umask_value="${INSTALL_UMASK:-027}"
 
 # shellcheck disable=SC2329 # run by the EXIT trap
 cleanup() {
@@ -39,6 +41,19 @@ trap cleanup EXIT
 
 # Runs a shell snippet inside the container (as root unless extra docker exec args say so).
 in_ct() { docker exec "$name" sh -c "$1"; }
+# install_ct PASSWORD ARGS...: runs ./install.sh under the test umask.
+install_ct() {
+  docker exec -e CRAFTRCON_PASSWORD="$1" "$name" sh -c "umask $umask_value; exec ./install.sh \"\$@\"" sh "${@:2}"
+}
+# The private node binary, run as the service user (runuser, or su where it is missing).
+node_as_service_user() {
+  in_ct 'if command -v runuser >/dev/null 2>&1; then runuser -u craftrcon -- /opt/craftrcon/node/bin/node --version; else su -s /bin/sh -c "/opt/craftrcon/node/bin/node --version" craftrcon; fi' 2>&1
+}
+# Kills the panel started by --no-service (found by argv[0]).
+kill_panel() {
+  in_ct 'for p in /proc/[0-9]*; do a0="$(tr "\0" "\n" <"$p/cmdline" 2>/dev/null | head -n 1)"; if [ "$a0" = /opt/craftrcon/node/bin/node ]; then kill "${p#/proc/}"; fi; done'
+  in_ct 'i=0; while curl -fs -o /dev/null http://127.0.0.1:8080/api/health && [ $i -lt 20 ]; do sleep 0.5; i=$((i + 1)); done'
+}
 
 echo "== $distro: building $tag"
 # The build context is the working tree streamed as a tar, without the heavy or
@@ -62,11 +77,11 @@ assert_eq "1" "$?" "no init system without --no-service exits 1"
 assert_contains "--no-service" "$out" "no init system message mentions --no-service"
 assert_eq "absent" "$(in_ct 'test -e /opt/craftrcon || test -e /etc/craftrcon && echo present || echo absent')" "failed checks changed nothing"
 
-echo "== $distro: install"
+echo "== $distro: install (umask $umask_value)"
 lang_args=()
 if [ -n "${INSTALL_LANG:-}" ]; then lang_args=(--lang "$INSTALL_LANG"); fi
 start=$SECONDS
-docker exec -e CRAFTRCON_PASSWORD="$PASSWORD" "$name" ./install.sh "${lang_args[@]}" --non-interactive --no-service >"$logfile" 2>&1
+install_ct "$PASSWORD" "${lang_args[@]}" --non-interactive --no-service >"$logfile" 2>&1
 rc=$?
 echo "   (install took $((SECONDS - start)) s, log: $logfile)"
 assert_eq "0" "$rc" "install exits 0"
@@ -103,6 +118,15 @@ assert_eq "ok" "$(in_ct 'test -f /opt/craftrcon/app/node_modules/fastify/package
 assert_eq "ok" "$(in_ct 'test -f /opt/craftrcon/app/public/js/data/commands.js && echo ok')" "nested data folders are copied"
 assert_eq "none" "$(in_ct 'ls -d /opt/craftrcon/app/test /opt/craftrcon/app/.superpowers /opt/craftrcon/app/data 2>/dev/null || echo none')" "test/.superpowers/data not copied"
 assert_eq "ok" "$(in_ct 'test -x /opt/craftrcon/node/bin/node && echo ok')" "private Node installed"
+# Explicit modes, whatever the umask of the install.
+for d in /opt/craftrcon /opt/craftrcon/node /opt/craftrcon/node/bin /opt/craftrcon/app /opt/craftrcon/app/src; do
+  assert_eq "755 root:root" "$(in_ct "stat -c '%a %U:%G' $d")" "$d is 0755 root:root"
+done
+assert_eq "755" "$(in_ct 'stat -L -c %a /opt/craftrcon/node/bin/node')" "node binary 0755"
+assert_eq "644" "$(in_ct 'stat -c %a /opt/craftrcon/app/src/server.js')" "app files 0644"
+assert_eq "644" "$(in_ct 'stat -c %a /opt/craftrcon/installed.json')" "installed.json 0644"
+assert_eq "750 root:craftrcon" "$(in_ct 'stat -c "%a %U:%G" /etc/craftrcon')" "/etc/craftrcon 0750 root:craftrcon"
+assert_contains "v" "$(node_as_service_user)" "the service user can run the private Node"
 inst="$(in_ct 'cat /opt/craftrcon/installed.json')"
 assert_contains "\"version\": \"$version\"" "$inst" "installed.json version"
 assert_contains '"commit": null' "$inst" "installed.json commit null without .git"
@@ -117,5 +141,18 @@ out="$(docker exec "$name" ./install.sh --non-interactive 2>&1)"
 assert_eq "0" "$?" "second run exits 0"
 assert_contains "./update.sh" "$out" "second run points to ./update.sh"
 assert_contains "--uninstall" "$out" "second run points to --uninstall"
+
+echo "== $distro: re-run repairs a private Node the service user cannot read"
+kill_panel
+in_ct 'chmod 0700 /opt/craftrcon/node && rm -f /opt/craftrcon/installed.json'
+out="$(install_ct repairpass1 --non-interactive --no-service 2>&1)"
+rc=$?
+assert_eq "0" "$rc" "re-run exits 0"
+if [ "$rc" -ne 0 ]; then printf '%s
+' "$out" | tail -n 30; fi
+assert_contains "already installed in /opt/craftrcon/node" "$out" "re-run keeps the existing private Node"
+assert_eq "755" "$(in_ct 'stat -c %a /opt/craftrcon/node')" "node dir permissions repaired"
+assert_contains "v" "$(node_as_service_user)" "the service user can run the private Node again"
+assert_eq "204" "$(login repairpass1)" "login with the new password -> 204"
 
 finish

@@ -175,24 +175,50 @@ firewall_cmds() {
   echo "${_out%; }"
 }
 
+# _firewall_add PORT: adds the rule; returns 0 if it was added, 3 if it already existed.
+_firewall_add() {
+  local _out
+  case "$FW_TOOL" in
+    ufw)
+      _out="$(LC_ALL=C ufw allow "$1/tcp")" || return 1 # (called under ||: no errexit here)
+      case "$_out" in
+        *"Rule added"* | *"Rule updated"*) return 0 ;;
+        *) return 3 ;; # "Skipping adding existing rule"
+      esac
+      ;;
+    firewalld)
+      if firewall-cmd --permanent --query-port="$1/tcp" >/dev/null 2>&1; then return 3; fi
+      firewall-cmd --permanent --add-port="$1/tcp" >/dev/null
+      ;;
+  esac
+}
+
 # open_firewall PORTS...: opens the ports when a firewall is active (FW_TOOL) and the
-# user accepted (FW_ACCEPT=1). Appends "tool:port" to FIREWALL_OPENED for each port.
+# user accepted (FW_ACCEPT=1). Only rules this call really added are appended to
+# FIREWALL_OPENED ("tool:port"; uninstall removes exactly those, R3); after each one
+# the caller's on_firewall_opened hook (if defined) runs, so they are recorded at once.
 open_firewall() {
-  local _p
+  local _p _rc _added=()
   [ -n "${FW_TOOL:-}" ] || return 0
   if [ "${FW_ACCEPT:-0}" != 1 ]; then
     warn FW_SKIPPED "$FW_TOOL" "$(firewall_cmds "$@")"
     return 0
   fi
   for _p in "$@"; do
-    case "$FW_TOOL" in
-      ufw) ufw allow "$_p/tcp" >/dev/null ;;
-      firewalld) firewall-cmd --permanent --add-port="$_p/tcp" >/dev/null ;;
+    _rc=0
+    _firewall_add "$_p" || _rc=$?
+    case "$_rc" in
+      0)
+        FIREWALL_OPENED+=("$FW_TOOL:$_p")
+        _added+=("$_p")
+        if declare -F on_firewall_opened >/dev/null; then on_firewall_opened; fi
+        ;;
+      3) info FW_ALREADY_OPEN "$_p" "$FW_TOOL" ;;
+      *) return "$_rc" ;;
     esac
-    FIREWALL_OPENED+=("$FW_TOOL:$_p")
   done
-  if [ "$FW_TOOL" = firewalld ]; then firewall-cmd --reload >/dev/null; fi
-  ok FW_OPENED "$*" "$FW_TOOL"
+  if [ "$FW_TOOL" = firewalld ] && [ "${#_added[@]}" -gt 0 ]; then firewall-cmd --reload >/dev/null; fi
+  if [ "${#_added[@]}" -gt 0 ]; then ok FW_OPENED "${_added[*]}" "$FW_TOOL"; fi
 }
 
 # -------------------------------------------------------------------- caddy --
@@ -217,10 +243,10 @@ caddy_parse_tag() {
 caddy_resolve() {
   local _json _url
   CADDY_VERSION=''
-  _json="$(curl -fsSL --retry 2 --connect-timeout 10 -H 'Accept: application/vnd.github+json' "$CADDY_RELEASES_API" 2>/dev/null || true)"
+  _json="$(curl -fsSL "${CURL_SECURE[@]}" --retry 2 --connect-timeout 10 -H 'Accept: application/vnd.github+json' "$CADDY_RELEASES_API" 2>/dev/null || true)"
   CADDY_VERSION="$(printf '%s\n' "$_json" | caddy_parse_tag)"
   if [ -z "$CADDY_VERSION" ]; then
-    _url="$(curl -fsSI -o /dev/null -w '%{redirect_url}' --connect-timeout 10 "$CADDY_DOWNLOAD_BASE/latest" 2>/dev/null || true)"
+    _url="$(curl -fsSI "${CURL_SECURE[@]}" -o /dev/null -w '%{redirect_url}' --connect-timeout 10 "$CADDY_DOWNLOAD_BASE/latest" 2>/dev/null || true)"
     CADDY_VERSION="$(printf '%s\n' "$_url" | caddy_parse_tag)"
   fi
   [ -n "$CADDY_VERSION" ] || die ERR_CADDY_RELEASE
@@ -235,9 +261,9 @@ setup_caddy() {
   _file="caddy_${CADDY_VERSION}_linux_$(caddy_arch).tar.gz"
   _base="$CADDY_DOWNLOAD_BASE/download/v$CADDY_VERSION"
   info CADDY_DOWNLOADING "$CADDY_VERSION"
-  curl -fsSL --retry 3 --connect-timeout 10 -o "$_work/caddy_checksums.txt" "$_base/caddy_${CADDY_VERSION}_checksums.txt" ||
+  curl -fsSL "${CURL_SECURE[@]}" --retry 3 --connect-timeout 10 -o "$_work/caddy_checksums.txt" "$_base/caddy_${CADDY_VERSION}_checksums.txt" ||
     die ERR_DOWNLOAD "$_base/caddy_${CADDY_VERSION}_checksums.txt"
-  curl -fL --retry 3 --connect-timeout 10 "$(curl_progress)" -o "$_work/$_file" "$_base/$_file" ||
+  curl -fL "${CURL_SECURE[@]}" --retry 3 --connect-timeout 10 "$(curl_progress)" -o "$_work/$_file" "$_base/$_file" ||
     die ERR_DOWNLOAD "$_base/$_file"
   _want="$(awk -v f="$_file" '$2 == f { print $1; exit }' "$_work/caddy_checksums.txt")"
   _got="$(sha512sum "$_work/$_file")"
@@ -247,7 +273,10 @@ setup_caddy() {
   tar -xzf "$_work/$_file" -C "$_work/caddy" caddy
   install -m 0755 -o root -g root "$_work/caddy/caddy" "$CADDY_BIN"
 
+  # Explicit owners and modes (never the umask), also for folders left by a previous run.
   install -d -m 0750 -o "$SVC_USER" -g "$SVC_USER" "$CADDY_DATA"
+  chown "$SVC_USER:$SVC_USER" "$CADDY_DATA"
+  chmod 0750 "$CADDY_DATA"
   render_template "$TEMPLATE_DIR/Caddyfile.tmpl" "$CADDYFILE" "DOMAIN=$_domain" "PORT=$_port"
   chown root:"$SVC_USER" "$CADDYFILE"
   chmod 0640 "$CADDYFILE"
@@ -272,7 +301,7 @@ local_ips() {
 # public_ip: the public IPv4 address as seen by api.ipify.org (3 s timeout), or nothing.
 public_ip() {
   local _ip
-  _ip="$(curl -s --max-time 3 "$IPIFY_URL" 2>/dev/null || true)"
+  _ip="$(curl -s "${CURL_SECURE[@]}" --max-time 3 "$IPIFY_URL" 2>/dev/null || true)"
   if [[ "$_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then echo "$_ip"; fi
 }
 

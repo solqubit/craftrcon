@@ -54,7 +54,7 @@ node_resolve() {
     return 0
   fi
   _arch="$(detect_arch)"
-  if ! curl -fsSL --retry 3 --connect-timeout 10 -o "$_work/SHASUMS256.txt" "$NODE_DIST_URL/SHASUMS256.txt"; then
+  if ! curl -fsSL "${CURL_SECURE[@]}" --retry 3 --connect-timeout 10 -o "$_work/SHASUMS256.txt" "$NODE_DIST_URL/SHASUMS256.txt"; then
     die ERR_NODE_INDEX "$NODE_DIST_URL/SHASUMS256.txt"
   fi
   _pick="$(node_pick_tarball "$_work/SHASUMS256.txt" "$_arch")"
@@ -63,6 +63,15 @@ node_resolve() {
   NODE_TARBALL="${_pick#* }"
   NODE_URL="$NODE_DIST_URL/$NODE_TARBALL"
   NODE_ACTION=download
+}
+
+# node_fix_perms: root owns the private Node and everyone may read and run it. Set
+# explicitly: mkdir/tar follow root's umask (027 on hardened hosts would leave the
+# folder unreadable for the service user).
+node_fix_perms() {
+  chmod 0755 "$OPT_DIR"
+  chown -R root:root "$NODE_DIR"
+  chmod -R u=rwX,go=rX "$NODE_DIR"
 }
 
 # ensure_node WORKDIR: installs Node as decided by node_resolve (called here if it was not
@@ -87,18 +96,19 @@ ensure_node() {
       ;;
     download)
       info NODE_DOWNLOADING "${NODE_TARBALL%.tar.xz}"
-      curl -fL --retry 3 --connect-timeout 10 "$(curl_progress)" -o "$_work/$NODE_TARBALL" "$NODE_URL" ||
+      curl -fL "${CURL_SECURE[@]}" --retry 3 --connect-timeout 10 "$(curl_progress)" -o "$_work/$NODE_TARBALL" "$NODE_URL" ||
         die ERR_DOWNLOAD "$NODE_URL"
       _got="$(sha256sum "$_work/$NODE_TARBALL")"
       _got="${_got%% *}"
       [ "$_got" = "$NODE_SHA256" ] || die ERR_CHECKSUM "$NODE_TARBALL"
       mkdir -p "$OPT_DIR"
+      chmod 0755 "$OPT_DIR"
       rm -rf "$_staging"
       mkdir -p "$_staging"
       tar -xJf "$_work/$NODE_TARBALL" -C "$_staging" --strip-components=1 --no-same-owner
       rm -rf "$NODE_DIR"
       mv "$_staging" "$NODE_DIR"
-      chown -R root:root "$NODE_DIR"
+      node_fix_perms
       NODE_BIN="$NODE_DIR/bin/node"
       NPM_BIN="$NODE_DIR/bin/npm"
       node_version_ok "$NODE_BIN" || die ERR_NODE_BROKEN "$NODE_BIN"

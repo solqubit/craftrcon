@@ -201,4 +201,100 @@ assert_eq "80 443" "$(flow 'DOMAIN=a.io; firewall_ports')" "firewall ports with 
 assert_eq "8080" "$(flow 'DOMAIN=""; PORT=8080; firewall_ports')" "firewall ports without a domain"
 assert_eq "skip|0" "$(flow 'FW_TOOL=ufw; FW_ACCEPT=0; open_firewall 8080 2>/dev/null; echo "skip|${#FIREWALL_OPENED[@]}"')" "open_firewall does nothing without consent"
 
+echo "password rules (review fix round 1)"
+assert_eq "7" "$(flow 'password_length "ñññññññ"')" "length counts characters, not bytes (7 x ñ)"
+assert_eq "10" "$(flow 'password_length "contraseña"')" "length of contraseña is 10"
+assert_eq "8" "$(flow 'password_length "abcdefgh"')" "ascii length"
+assert_fail "7 multibyte characters are too short (non-interactive)" flow 'NONINTERACTIVE=1; ask_password' CRAFTRCON_PASSWORD="ñññññññ"
+assert_ok "8 multibyte characters are enough" flow 'NONINTERACTIVE=1; ask_password' CRAFTRCON_PASSWORD="ññññññññ"
+out="$(flow 'NONINTERACTIVE=1; ask_password' CRAFTRCON_PASSWORD=$'goodpass1\nx' 2>&1)"
+assert_contains "line break" "$out" "CRAFTRCON_PASSWORD with LF is rejected with a clear message"
+assert_fail "CRAFTRCON_PASSWORD with CR dies" flow 'NONINTERACTIVE=1; ask_password' CRAFTRCON_PASSWORD=$'goodpass1\r'
+# (compares the length: MSYS bash strips \r from command substitutions)
+assert_eq "9" "$(ask_q 'ask_password; echo "${#PASSWORD}"' $'goodpass1\r\ngoodpass1\r\ngoodpass1\ngoodpass1')" "interactive password with CR is asked again"
+
+echo "https only (review fix round 1)"
+assert_eq "--proto =https --proto-redir =https" "$(flow 'echo "${CURL_SECURE[*]}"')" "downloads are restricted to https"
+assert_eq "--proto =http,https --proto-redir =http,https" "$(flow 'echo "${CURL_SECURE[*]}"' CRAFTRCON_TEST_ALLOW_HTTP=1)" "only the test-only variable allows http"
+
+# A fake curl: logs its arguments, serves fixtures for -o downloads by URL suffix.
+mkdir -p "$TMP/bin-dl" "$TMP/dl"
+cat >"$TMP/bin-dl/curl" <<SH
+#!/bin/sh
+echo "\$*" >>"$TMP/dl/curl.log"
+out=''; url=''
+while [ \$# -gt 0 ]; do
+  case "\$1" in
+    -o) out="\$2"; shift ;;
+    -w|-H|--proto|--proto-redir|--retry|--connect-timeout|--max-time) shift ;;
+    -*) ;;
+    *) url="\$1" ;;
+  esac
+  shift
+done
+case "\$url" in
+  *SHASUMS256.txt) src="$FIX/node-SHASUMS256.txt" ;;
+  *checksums.txt) src="$TMP/dl/caddy_checksums.txt" ;;
+  *) src="$TMP/dl/payload" ;;
+esac
+if [ -n "\$out" ] && [ "\$out" != /dev/null ]; then cat "\$src" >"\$out"; else cat "\$src"; fi
+SH
+chmod +x "$TMP/bin-dl/curl"
+echo "not the real archive" >"$TMP/dl/payload"
+printf '%0128d  caddy_2.10.2_linux_amd64.tar.gz\n' 0 >"$TMP/dl/caddy_checksums.txt"
+dl_env=(PATH="$TMP/bin-dl:$PATH" CRAFTRCON_UNAME_M=x86_64 LIBC_OVERRIDE=glibc NODE_DIST_URL=https://nodejs.test/dist)
+
+rm -f "$TMP/dl/curl.log"
+out="$(flow "OPT_DIR='$TMP/opt'; NODE_DIR='$TMP/opt/node'; LIBC=glibc; w=\$(mktemp -d); ensure_node \"\$w\"" "${dl_env[@]}" 2>&1)"
+rc=$?
+assert_eq "1" "$rc" "node: SHA-256 mismatch aborts"
+assert_contains "Checksum mismatch for node-v24.11.0-linux-x64.tar.xz" "$out" "node: mismatch message names the file"
+assert_eq "absent" "$([ -e "$TMP/opt" ] && echo present || echo absent)" "node: nothing created under OPT_DIR on mismatch"
+assert_eq "2" "$(grep -c -- '--proto =https --proto-redir =https' "$TMP/dl/curl.log")" "node: both downloads (SHASUMS, tarball) are https-only"
+
+rm -f "$TMP/dl/curl.log"
+out="$(flow "CADDY_BIN='$TMP/opt/caddy'; CADDY_DATA='$TMP/data/caddy'; CADDYFILE='$TMP/etc/Caddyfile'; CADDY_VERSION=2.10.2; w=\$(mktemp -d); setup_caddy panel.example.com 8080 \"\$w\"" "${dl_env[@]}" 2>&1)"
+rc=$?
+assert_eq "1" "$rc" "caddy: SHA-512 mismatch aborts"
+assert_contains "Checksum mismatch for caddy_2.10.2_linux_amd64.tar.gz" "$out" "caddy: mismatch message names the file"
+assert_eq "absent absent absent" "$(for p in "$TMP/opt" "$TMP/data" "$TMP/etc"; do [ -e "$p" ] && printf 'present ' || printf 'absent '; done | sed 's/ $//')" "caddy: no binary, data dir or Caddyfile on mismatch"
+assert_eq "2" "$(grep -c -- '--proto =https --proto-redir =https' "$TMP/dl/curl.log")" "caddy: both downloads are https-only"
+rm -f "$TMP/dl/curl.log"
+flow 'caddy_resolve' "${dl_env[@]}" CADDY_RELEASES_API=https://api.test/latest >/dev/null 2>&1 <"$FIX/caddy-release.json" || true
+assert_contains "--proto =https" "$(cat "$TMP/dl/curl.log" 2>/dev/null)" "caddy: release lookup is https-only"
+rm -f "$TMP/dl/curl.log"
+echo "203.0.113.7" >"$TMP/dl/payload"
+assert_eq "203.0.113.7" "$(flow 'public_ip' "${dl_env[@]}")" "public_ip via the ipify stub"
+assert_contains "--proto =https" "$(cat "$TMP/dl/curl.log")" "ipify request is https-only"
+
+echo "firewall bookkeeping (review fix round 1)"
+mkdir -p "$TMP/bin-fw"
+cat >"$TMP/bin-fw/ufw" <<'SH'
+#!/bin/sh
+case "$2" in
+  80/tcp) echo "Skipping adding existing rule"; echo "Skipping adding existing rule (v6)" ;;
+  *) echo "Rule added"; echo "Rule added (v6)" ;;
+esac
+SH
+cat >"$TMP/bin-fw/firewall-cmd" <<SH
+#!/bin/sh
+echo "\$*" >>"$TMP/fw.log"
+case "\$*" in
+  *--query-port=8080/tcp*) echo yes; exit 0 ;;
+  *--query-port=*) echo no; exit 1 ;;
+  *) echo success ;;
+esac
+SH
+chmod +x "$TMP/bin-fw/"*
+fw_snippet='on_firewall_opened() { echo "hook:${FIREWALL_OPENED[*]}"; }; FW_TOOL=$1; FW_ACCEPT=1; shift; open_firewall "$@" 2>/dev/null; echo "opened:${FIREWALL_OPENED[*]}"'
+fwrun() { env PATH="$TMP/bin-fw:$PATH" bash -c "set -Eeuo pipefail; . '$FLOW'; $fw_snippet" _ "$@"; }
+out="$(fwrun ufw 80 443)"
+assert_contains "opened:ufw:443" "$out" "ufw: an existing rule (80) is not recorded, a new one (443) is"
+assert_eq "hook:ufw:443" "$(grep hook <<<"$out" | tr '\n' ';' | sed 's/;$//')" "ufw: installed.json hook runs once per newly opened port"
+rm -f "$TMP/fw.log"
+out="$(fwrun firewalld 8080 9090)"
+assert_contains "opened:firewalld:9090" "$out" "firewalld: an already open port (8080) is not recorded"
+assert_eq "0" "$(grep -c -- '--add-port=8080' "$TMP/fw.log")" "firewalld: an already open port is not added again"
+assert_eq "1" "$(grep -c -- '--reload' "$TMP/fw.log")" "firewalld: reloaded once"
+
 finish

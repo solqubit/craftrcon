@@ -337,6 +337,14 @@ port_in_use() {
   ' "${_files[@]}"
 }
 
+# CURL_SECURE: flags for every download (nodejs.org, GitHub, ipify): https only, also
+# after redirects. CRAFTRCON_TEST_ALLOW_HTTP=1 (tests only) also allows plain http.
+if [ "${CRAFTRCON_TEST_ALLOW_HTTP:-}" = 1 ]; then
+  CURL_SECURE=(--proto "=http,https" --proto-redir "=http,https")
+else
+  CURL_SECURE=(--proto "=https" --proto-redir "=https")
+fi
+
 # curl_progress: the curl flag for big downloads (a progress bar only on a terminal).
 curl_progress() {
   if [ -t 2 ]; then echo --progress-bar; else echo -sS; fi

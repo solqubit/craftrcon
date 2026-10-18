@@ -206,19 +206,49 @@ check_system() {
 # The variables passed to ask/read_secret must not start with "_": the library's own
 # "_" locals would shadow them and the answer would be lost.
 
+# password_length TEXT: number of characters (UTF-8 code points, whatever the locale:
+# sudo often runs with LANG=C, where ${#var} would count bytes). The CLI counts UTF-16
+# units, which is never less, so a password accepted here is never rejected there.
+password_length() {
+  local LC_ALL=C _s="$1"
+  _s="${_s//[$'\x80'-$'\xbf']/}" # drop UTF-8 continuation bytes
+  echo "${#_s}"
+}
+
+# password_problem TEXT: prints the message key of what is wrong with a password, if any.
+password_problem() {
+  case "$1" in
+    *$'\n'* | *$'\r'*) echo PASSWORD_NEWLINE ;;
+    *) if [ "$(password_length "$1")" -lt "$MIN_PASSWORD_LENGTH" ]; then echo PASSWORD_SHORT; fi ;;
+  esac
+}
+
 ask_password() {
-  local p1 p2 _try
+  local p1 p2 problem _try
   if [ "$NONINTERACTIVE" = 1 ]; then
     read_secret Q_PASSWORD PASSWORD
-    [ "${#PASSWORD}" -ge "$MIN_PASSWORD_LENGTH" ] || die ERR_PASSWORD_SHORT "$MIN_PASSWORD_LENGTH"
+    problem="$(password_problem "$PASSWORD")"
+    case "$problem" in
+      '') ;;
+      PASSWORD_SHORT) die ERR_PASSWORD_SHORT "$MIN_PASSWORD_LENGTH" ;;
+      *) die "ERR_$problem" ;;
+    esac
     return 0
   fi
   for ((_try = 0; _try < MAX_TRIES; _try++)); do
     read_secret Q_PASSWORD p1
-    if [ "${#p1}" -lt "$MIN_PASSWORD_LENGTH" ]; then
-      warn PASSWORD_SHORT "$MIN_PASSWORD_LENGTH"
-      continue
-    fi
+    problem="$(password_problem "$p1")"
+    case "$problem" in
+      '') ;;
+      PASSWORD_SHORT)
+        warn PASSWORD_SHORT "$MIN_PASSWORD_LENGTH"
+        continue
+        ;;
+      *)
+        warn "$problem"
+        continue
+        ;;
+    esac
     read_secret Q_PASSWORD_AGAIN p2
     if [ "$p1" != "$p2" ]; then
       warn PASSWORD_MISMATCH
@@ -419,6 +449,13 @@ step_packages() {
   if [ "$_have_curl" = 0 ]; then resolve_downloads; fi
 }
 
+# service_user_can_run_node: true when the service user exists and can run NODE_BIN.
+service_user_can_run_node() {
+  id -u "$SVC_USER" >/dev/null 2>&1 || return 1
+  init_run_as
+  (cd / && as_craftrcon "$NODE_BIN" --version) >/dev/null 2>&1
+}
+
 step_node() {
   begin_step 2 STEP_NODE
   local _action="$NODE_ACTION"
@@ -426,6 +463,14 @@ step_node() {
   case "$_action" in
     download) record_change CHANGE_NODE "$NODE_VERSION" "$NODE_DIR" ;;
     apk) record_change CHANGE_PACKAGES "nodejs npm" ;;
+    keep)
+      # Kept from an earlier run: root can always run it, the service user maybe not
+      # (e.g. extracted under umask 027). Repair unless that user can run it already.
+      if ! service_user_can_run_node; then
+        node_fix_perms
+        info NODE_PERMS_REPAIRED "$NODE_DIR"
+      fi
+      ;;
   esac
   ok NODE_READY "$NODE_VERSION"
 }
@@ -460,7 +505,10 @@ create_user() {
 step_user() {
   begin_step 3 STEP_USER "$SVC_USER"
   create_user
+  # Every owner and mode below is explicit: never rely on root's umask.
   install -d -m 0755 -o root -g root "$OPT_DIR"
+  chown root:root "$OPT_DIR"
+  chmod 0755 "$OPT_DIR"
   install -d -m 0750 -o "$SVC_USER" -g "$SVC_USER" "$DATA_DIR"
   # A data folder left by an earlier attempt is kept, but must belong to the service user.
   chown -R "$SVC_USER:$SVC_USER" "$DATA_DIR"
@@ -469,6 +517,7 @@ step_user() {
   chown root:"$SVC_USER" "$CONF_DIR"
   chmod 0750 "$CONF_DIR"
   record_change CHANGE_DIRS "$DATA_DIR" "$CONF_DIR"
+  service_user_can_run_node || die ERR_NODE_NOT_RUNNABLE "$NODE_BIN" "$SVC_USER"
 }
 
 # app_items: the top-level entries of the source copy that go into APP_DIR. Exclusions
@@ -494,6 +543,7 @@ step_app() {
     rm -rf "$APP_DIR"
   fi
   mkdir -p "$APP_DIR"
+  chmod 0755 "$APP_DIR"
   tar -C "$SRC_DIR" -cf - "${_items[@]}" | tar -C "$APP_DIR" -xf - --no-same-owner
   record_change CHANGE_APP "$APP_DIR"
 }
@@ -503,7 +553,7 @@ step_deps() {
   (
     cd "$APP_DIR"
     PATH="$(dirname "$NODE_BIN"):$PATH" NPM_CONFIG_UPDATE_NOTIFIER=false \
-      "$NPM_BIN" ci --omit=dev --no-audit --no-fund --loglevel=error
+      "$NPM_BIN" ci --omit=dev --ignore-scripts --no-audit --no-fund --loglevel=error
   )
   # root owns the code; the service user can only read it.
   chown -R root:root "$APP_DIR"
@@ -532,7 +582,7 @@ step_config() {
   PASSWORD=''
   case "$_rc" in
     0) ;;
-    2) die ERR_PASSWORD_SHORT "$MIN_PASSWORD_LENGTH" ;;
+    2) die ERR_PASSWORD_REJECTED "$MIN_PASSWORD_LENGTH" ;;
     *) die ERR_SET_PASSWORD ;;
   esac
   record_change CHANGE_CONFIG "$CONFIG_FILE" "$DATA_DIR"
@@ -564,6 +614,13 @@ step_service() {
   fi
 }
 
+# on_firewall_opened: open_firewall hook, run right after each rule it really added.
+# installed.json is rewritten every time, so a later failure never orphans a rule (R3).
+on_firewall_opened() {
+  write_installed
+  record_change CHANGE_FIREWALL "${FIREWALL_OPENED[${#FIREWALL_OPENED[@]}-1]#*:}" "$FW_TOOL"
+}
+
 step_firewall() {
   local _ports=()
   begin_step 8 STEP_FIREWALL
@@ -573,10 +630,6 @@ step_firewall() {
   fi
   read -ra _ports <<<"$(firewall_ports)"
   open_firewall "${_ports[@]}"
-  if [ "${#FIREWALL_OPENED[@]}" -gt 0 ]; then
-    record_change CHANGE_FIREWALL "${_ports[*]}" "$FW_TOOL"
-    write_installed
-  fi
 }
 
 # start_background: --no-service (containers without init): nohup as the service user.
