@@ -596,7 +596,8 @@
       "night": "Night",
       "midnight": "Midnight",
       "exact": "Exact time (ticks)",
-      "set": "Set"
+      "set": "Set",
+      "ticks": "ticks"
     },
     "weather": {
       "title": "Weather",
@@ -626,7 +627,8 @@
       "centerTitle": "Border center",
       "x": "X",
       "z": "Z",
-      "setCenter": "Set center"
+      "setCenter": "Set center",
+      "sizeTitle": "Size"
     },
     "gamerules": {
       "title": "Gamerules",
@@ -649,7 +651,8 @@
       "invalid_size": "Enter a size from 1 to 59999968.",
       "invalid_seconds": "Enter a whole number of seconds, or leave it empty.",
       "invalid_coords": "Enter a number between -29999984 and 29999984 for X and Z."
-    }
+    },
+    "environment": "Environment"
   },
   "broadcast": {
     "open": "Write an announcement",

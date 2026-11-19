@@ -596,7 +596,8 @@
       "night": "Noche",
       "midnight": "Medianoche",
       "exact": "Hora exacta (ticks)",
-      "set": "Fijar"
+      "set": "Fijar",
+      "ticks": "ticks"
     },
     "weather": {
       "title": "Clima",
@@ -626,7 +627,8 @@
       "centerTitle": "Centro del borde",
       "x": "X",
       "z": "Z",
-      "setCenter": "Fijar centro"
+      "setCenter": "Fijar centro",
+      "sizeTitle": "Tamaño"
     },
     "gamerules": {
       "title": "Gamerules",
@@ -649,7 +651,8 @@
       "invalid_size": "Ingresa un tamaño de 1 a 59999968.",
       "invalid_seconds": "Ingresa un número entero de segundos, o déjalo vacío.",
       "invalid_coords": "Ingresa un número entre -29999984 y 29999984 para X y Z."
-    }
+    },
+    "environment": "Ambiente"
   },
   "broadcast": {
     "open": "Escribir un anuncio",

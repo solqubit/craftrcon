@@ -60,6 +60,13 @@ const PATHS = {
   shieldOff: () => html`<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="M9 12h6" />`,
   userPlus: () => html`<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M19 8v6" /><path d="M22 11h-6" />`,
   userMinus: () => html`<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 11h-6" />`,
+  // World.
+  sun: () => html`<circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.34 17.66-1.41 1.41" /><path d="m19.07 4.93-1.41 1.41" />`,
+  sunrise: () => html`<path d="M12 2v8" /><path d="m4.93 10.93 1.41 1.41" /><path d="M2 18h2" /><path d="M20 18h2" /><path d="m19.07 10.93-1.41 1.41" /><path d="M22 22H2" /><path d="m8 6 4-4 4 4" /><path d="M16 18a4 4 0 0 0-8 0" />`,
+  moon: () => html`<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />`,
+  moonStar: () => html`<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9" /><path d="M20 3v4" /><path d="M22 5h-4" />`,
+  rain: () => html`<path d="M4 14.9A7 7 0 1 1 15.7 8h1.8a4.5 4.5 0 0 1 2.5 8.2" /><path d="M16 14v6" /><path d="M8 14v6" /><path d="M12 16v6" />`,
+  border: () => html`<rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="3 3" /><rect x="8" y="8" width="8" height="8" rx="1" />`,
 };
 
 export function Icon({ name, size = 18, class: className = '' }) {

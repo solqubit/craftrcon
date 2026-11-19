@@ -20,12 +20,25 @@ import { Broadcast } from '../components/Broadcast.js';
 import { useCommandRunner } from '../components/CommandRunner.js';
 import { Icon } from '../components/Icon.js';
 
-// A card with a title and, optionally, a hint under it.
-function Section({ id, title, hint, children }) {
-  return html`<section class="card wd-card" aria-labelledby=${`wd-${id}-title`}>
-    <h2 id=${`wd-${id}-title`} class="card-title">${title}</h2>
-    ${hint && html`<p class="hint">${hint}</p>`}
-    ${children}
+// A card whose body opens and closes from its header (world border and
+// gamerules start closed, so the page stays calm).
+function Collapsible({ id, icon, title, hint, open, onToggle, children }) {
+  return html`<section class="card wd-collapse" aria-labelledby=${`wd-${id}-title`}>
+    <button
+      type="button"
+      class="wd-collapse-head"
+      aria-expanded=${open ? 'true' : 'false'}
+      aria-controls=${`wd-${id}-body`}
+      onClick=${onToggle}
+    >
+      <span class="wd-collapse-icon" aria-hidden="true"><${Icon} name=${icon} size=${16} /></span>
+      <span class="wd-collapse-text">
+        <span id=${`wd-${id}-title`} class="wd-collapse-title">${title}</span>
+        ${hint && html`<span class="wd-collapse-hint">${hint}</span>`}
+      </span>
+      <${Icon} name="chevronDown" size=${16} class=${`wd-chevron ${open ? 'wd-flip' : ''}`} />
+    </button>
+    ${open && html`<div id=${`wd-${id}-body`} class="wd-collapse-body">${children}</div>`}
   </section>`;
 }
 
@@ -51,71 +64,80 @@ function FieldError({ id, code }) {
   return code ? html`<p id=${id} class="field-error" role="alert">${t(`world.errors.${code}`)}</p>` : null;
 }
 
-function TimeCard({ send, busy }) {
+// One labelled line of the environment card: the label on the left, the
+// choices on the right (stacked on small screens).
+function Row({ id, label, children }) {
+  return html`<div class="wd-row" role="group" aria-labelledby=${`wd-${id}-label`}>
+    <span id=${`wd-${id}-label`} class="wd-row-label">${label}</span>
+    <div class="wd-row-controls">${children}</div>
+  </div>`;
+}
+
+function Chip({ icon, label, title, busy, onClick }) {
+  return html`<button type="button" class="wd-chip" title=${title} disabled=${busy} onClick=${onClick}>
+    ${icon && html`<${Icon} name=${icon} size=${15} />`}<span>${label}</span>
+  </button>`;
+}
+
+const TIME_ICONS = { day: 'sunrise', noon: 'sun', night: 'moon', midnight: 'moonStar' };
+const WEATHER_ICONS = { clear: 'sun', rain: 'rain', thunder: 'bolt' };
+
+// Time, weather and difficulty: the everyday controls, in one quiet card.
+function EnvironmentCard({ send, busy }) {
   const [value, setValue] = useState('');
   const { error, run, clear } = useBuilt(send);
-  return html`<${Section} id="time" title=${t('world.time.title')} hint=${t('world.time.hint')}>
-    <div class="wd-buttons">
+  return html`<section class="card wd-env" aria-label=${t('world.environment')}>
+    <${Row} id="time" label=${t('world.time.title')}>
       ${Object.entries(TIME_PRESETS).map(
-        ([name, ticks]) => html`<button key=${name} type="button" class="btn btn-secondary" disabled=${busy} onClick=${() => run(() => timeSet(ticks))}>
-          ${t(`world.time.${name}`)}<span class="wd-ticks">${ticks}</span>
-        </button>`,
+        ([name, ticks]) => html`<${Chip}
+          key=${name}
+          icon=${TIME_ICONS[name]}
+          label=${t(`world.time.${name}`)}
+          title=${`time set ${ticks}`}
+          busy=${busy}
+          onClick=${() => run(() => timeSet(ticks))}
+        />`,
       )}
-    </div>
-    <form
-      class="wd-form"
-      noValidate
-      onSubmit=${(event) => {
-        event.preventDefault();
-        run(() => timeSet(value));
-      }}
-    >
-      <div class="field wd-field">
-        <label class="label" for="wd-time-exact">${t('world.time.exact')}</label>
+      <form
+        class="wd-exact"
+        noValidate
+        onSubmit=${(event) => {
+          event.preventDefault();
+          run(() => timeSet(value));
+        }}
+      >
         <input
           id="wd-time-exact"
-          class="input mono"
+          class="input mono wd-exact-input"
           type="text"
           inputmode="numeric"
           value=${value}
-          placeholder="6000"
+          placeholder=${t('world.time.ticks')}
+          aria-label=${t('world.time.exact')}
           onInput=${(e) => { setValue(e.currentTarget.value); clear(); }}
           aria-invalid=${error ? 'true' : undefined}
           aria-describedby=${error ? 'wd-time-error' : undefined}
           autocomplete="off"
         />
-        <${FieldError} id="wd-time-error" code=${error} />
-      </div>
-      <button type="submit" class="btn btn-primary" disabled=${busy}>${t('world.time.set')}</button>
-    </form>
-  </${Section}>`;
-}
-
-function WeatherCard({ send, busy }) {
-  return html`<${Section} id="weather" title=${t('world.weather.title')}>
-    <div class="wd-buttons">
+        <button type="submit" class="btn btn-secondary btn-sm" disabled=${busy}>${t('world.time.set')}</button>
+      </form>
+    </${Row}>
+    <${FieldError} id="wd-time-error" code=${error} />
+    <${Row} id="weather" label=${t('world.weather.title')}>
       ${WEATHERS.map(
-        (kind) => html`<button key=${kind} type="button" class="btn btn-secondary" disabled=${busy} onClick=${() => send(weather(kind))}>
-          ${t(`world.weather.${kind}`)}
-        </button>`,
+        (kind) => html`<${Chip} key=${kind} icon=${WEATHER_ICONS[kind]} label=${t(`world.weather.${kind}`)} busy=${busy} onClick=${() => send(weather(kind))} />`,
       )}
-    </div>
-  </${Section}>`;
-}
-
-function DifficultyCard({ send, busy }) {
-  return html`<${Section} id="difficulty" title=${t('world.difficulty.title')} hint=${t('world.difficulty.hint')}>
-    <div class="wd-buttons">
+    </${Row}>
+    <${Row} id="difficulty" label=${t('world.difficulty.title')}>
       ${DIFFICULTIES.map(
-        (level) => html`<button key=${level} type="button" class="btn btn-secondary" disabled=${busy} onClick=${() => send(difficulty(level))}>
-          ${t(`world.difficulty.${level}`)}
-        </button>`,
+        (level) => html`<${Chip} key=${level} label=${t(`world.difficulty.${level}`)} busy=${busy} onClick=${() => send(difficulty(level))} />`,
       )}
-    </div>
-  </${Section}>`;
+    </${Row}>
+  </section>`;
 }
 
 function BorderCard({ send, busy }) {
+  const [open, setOpen] = useState(false);
   const [size, setSize] = useState('');
   const [seconds, setSeconds] = useState('');
   const [x, setX] = useState('');
@@ -137,62 +159,66 @@ function BorderCard({ send, busy }) {
     />
   </div>`;
 
-  return html`<${Section} id="border" title=${t('world.border.title')}>
-    <form
-      class="wd-form"
-      noValidate
-      onSubmit=${(event) => {
-        event.preventDefault();
-        sizeForm.run(() => worldBorderSet(size, seconds));
-      }}
-    >
-      ${input('wd-border-size', t('world.border.size'), size, setSize, sizeForm, {
-        placeholder: '1000',
-        'aria-invalid': sizeForm.error === 'invalid_size' ? 'true' : undefined,
-        'aria-describedby': sizeForm.error === 'invalid_size' ? 'wd-border-size-error' : undefined,
-      })}
-      ${input('wd-border-seconds', t('world.border.seconds'), seconds, setSeconds, sizeForm, {
-        inputmode: 'numeric',
-        placeholder: '0',
-        'aria-invalid': sizeForm.error === 'invalid_seconds' ? 'true' : undefined,
-        'aria-describedby': sizeForm.error === 'invalid_seconds' ? 'wd-border-size-error' : undefined,
-      })}
-      <button type="submit" class="btn btn-primary" disabled=${busy}>${t('world.border.setSize')}</button>
-    </form>
-    <p class="hint">${t('world.border.sizeHint')}</p>
-    <${FieldError} id="wd-border-size-error" code=${sizeForm.error} />
-
-    <h3 class="wd-sub">${t('world.border.centerTitle')}</h3>
-    <form
-      class="wd-form"
-      noValidate
-      onSubmit=${(event) => {
-        event.preventDefault();
-        centerForm.run(() => worldBorderCenter(x, z));
-      }}
-    >
-      ${input('wd-border-x', t('world.border.x'), x, setX, centerForm, { placeholder: '0', 'aria-invalid': centerForm.error ? 'true' : undefined })}
-      ${input('wd-border-z', t('world.border.z'), z, setZ, centerForm, { placeholder: '0', 'aria-invalid': centerForm.error ? 'true' : undefined })}
-      <button type="submit" class="btn btn-primary" disabled=${busy}>${t('world.border.setCenter')}</button>
-    </form>
-    <${FieldError} id="wd-border-center-error" code=${centerForm.error} />
-  </${Section}>`;
-}
-
-function SaveCard({ send, busy }) {
-  return html`<${Section} id="save" title=${t('world.save.title')} hint=${t('world.save.hint')}>
-    <div class="wd-buttons">
-      <button type="button" class="btn btn-secondary" disabled=${busy} onClick=${() => send(saveAll())}>${t('world.save.button')}</button>
+  return html`<${Collapsible}
+    id="border"
+    icon="border"
+    title=${t('world.border.title')}
+    hint=${t('world.border.sizeHint')}
+    open=${open}
+    onToggle=${() => setOpen(!open)}
+  >
+    <div class="wd-border">
+      <div class="wd-border-part">
+      <h3 class="wd-sub">${t('world.border.sizeTitle')}</h3>
+      <form
+        class="wd-form"
+        noValidate
+        onSubmit=${(event) => {
+          event.preventDefault();
+          sizeForm.run(() => worldBorderSet(size, seconds));
+        }}
+      >
+        ${input('wd-border-size', t('world.border.size'), size, setSize, sizeForm, {
+          placeholder: '1000',
+          'aria-invalid': sizeForm.error === 'invalid_size' ? 'true' : undefined,
+          'aria-describedby': sizeForm.error ? 'wd-border-size-error' : undefined,
+        })}
+        ${input('wd-border-seconds', t('world.border.seconds'), seconds, setSeconds, sizeForm, {
+          inputmode: 'numeric',
+          placeholder: '0',
+          'aria-invalid': sizeForm.error === 'invalid_seconds' ? 'true' : undefined,
+          'aria-describedby': sizeForm.error ? 'wd-border-size-error' : undefined,
+        })}
+        <button type="submit" class="btn btn-secondary" disabled=${busy}>${t('world.border.setSize')}</button>
+        <${FieldError} id="wd-border-size-error" code=${sizeForm.error} />
+      </form>
+      </div>
+      <div class="wd-border-part">
+      <h3 class="wd-sub">${t('world.border.centerTitle')}</h3>
+      <form
+        class="wd-form"
+        noValidate
+        onSubmit=${(event) => {
+          event.preventDefault();
+          centerForm.run(() => worldBorderCenter(x, z));
+        }}
+      >
+        ${input('wd-border-x', t('world.border.x'), x, setX, centerForm, {
+          placeholder: '0',
+          'aria-invalid': centerForm.error ? 'true' : undefined,
+          'aria-describedby': centerForm.error ? 'wd-border-center-error' : undefined,
+        })}
+        ${input('wd-border-z', t('world.border.z'), z, setZ, centerForm, {
+          placeholder: '0',
+          'aria-invalid': centerForm.error ? 'true' : undefined,
+          'aria-describedby': centerForm.error ? 'wd-border-center-error' : undefined,
+        })}
+        <button type="submit" class="btn btn-secondary" disabled=${busy}>${t('world.border.setCenter')}</button>
+        <${FieldError} id="wd-border-center-error" code=${centerForm.error} />
+      </form>
+      </div>
     </div>
-  </${Section}>`;
-}
-
-function BroadcastCard({ onOpen }) {
-  return html`<${Section} id="broadcast" title=${t('broadcast.card.title')} hint=${t('broadcast.card.text')}>
-    <div class="wd-buttons">
-      <button type="button" class="btn btn-primary" onClick=${onOpen}>${t('broadcast.open')}</button>
-    </div>
-  </${Section}>`;
+  </${Collapsible}>`;
 }
 
 // ---------- Gamerules ----------
@@ -348,18 +374,16 @@ function Gamerules({ serverId, send, busy, lastReply }) {
     }
   }
 
-  return html`<section class="card wd-card wd-wide" aria-labelledby="wd-rules-title">
-    <div class="card-head wd-rules-head">
-      <div>
-        <h2 id="wd-rules-title" class="card-title">${t('world.gamerules.title')}</h2>
-        <p class="hint">${t('world.gamerules.hint')}</p>
-      </div>
-      <button type="button" class="btn btn-secondary btn-sm" aria-expanded=${open ? 'true' : 'false'} aria-controls="wd-rules-body" onClick=${toggleOpen}>
-        <${Icon} name="chevronDown" size=${14} class=${open ? 'wd-flip' : ''} />${open ? t('world.gamerules.hide') : t('world.gamerules.show')}
-      </button>
-    </div>
-    <div id="wd-rules-body">${body}</div>
-  </section>`;
+  return html`<${Collapsible}
+    id="rules"
+    icon="settings"
+    title=${t('world.gamerules.title')}
+    hint=${t('world.gamerules.hint')}
+    open=${open}
+    onToggle=${toggleOpen}
+  >
+    ${body}
+  </${Collapsible}>`;
 }
 
 // ---------- Page ----------
@@ -374,16 +398,20 @@ function WorldView({ server }) {
         <h1 class="page-title">${t('nav.world')}</h1>
         <p class="page-subtitle">${t('world.subtitle', { name: server.name })}</p>
       </div>
+      <div class="wd-actions">
+        <button type="button" class="btn btn-secondary btn-sm" title=${t('world.save.hint')} disabled=${busy} onClick=${() => send(saveAll())}>
+          <${Icon} name="download" size=${15} />${t('world.save.button')}
+        </button>
+        <button type="button" class="btn btn-primary btn-sm" title=${t('broadcast.card.text')} onClick=${() => setBroadcasting(true)}>
+          <${Icon} name="message" size=${15} />${t('broadcast.open')}
+        </button>
+      </div>
     </header>
-    <div class="wd-grid">
-      <${TimeCard} send=${send} busy=${busy} />
-      <${WeatherCard} send=${send} busy=${busy} />
-      <${DifficultyCard} send=${send} busy=${busy} />
-      <${SaveCard} send=${send} busy=${busy} />
+    <div class="wd-stack">
+      <${EnvironmentCard} send=${send} busy=${busy} />
       <${BorderCard} send=${send} busy=${busy} />
-      <${BroadcastCard} onOpen=${() => setBroadcasting(true)} />
+      <${Gamerules} serverId=${server.id} send=${send} busy=${busy} lastReply=${lastReply} />
     </div>
-    <${Gamerules} serverId=${server.id} send=${send} busy=${busy} lastReply=${lastReply} />
     ${broadcasting && html`<${Broadcast} server=${server} onClose=${() => setBroadcasting(false)} />`}
     ${confirmDialog}
   </div>`;
